@@ -15,7 +15,7 @@ load_dotenv()
 app = FastAPI()
 
 # Clients
-gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY_1"))
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 class QueryRequest(BaseModel):
@@ -64,11 +64,3 @@ async def ask_llm(req: QueryRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-if __name__ == "__main__":
-    try:
-        uvicorn.run(app, host="localhost", port=8080)
-    except KeyboardInterrupt:
-        print("Stopping server...")
-    finally:
-        print("Port 8080 has been released.")
