@@ -1,0 +1,14 @@
+# Environments
+.env
+
+# Python Cache
+__pycache__/
+*.py[cod]
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Extra Customization
+.vscode/
+.idea/
