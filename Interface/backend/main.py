@@ -16,7 +16,7 @@ load_dotenv()
 app = FastAPI()
 
 # Clients
-gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY_2"))
+gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY_21"))
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 class QueryRequest(BaseModel):
