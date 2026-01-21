@@ -96,7 +96,7 @@ async def ask_llm(req: QueryRequest):
             raw_output = response['message']['content']
 
         elif req.model_id == "qwen":
-            response = ollama.chat(model='qwen2.5:8b', messages=[
+            response = ollama.chat(model='qwen3:8b', messages=[
                 {'role': 'user', 'content': prompt}
             ])
             raw_output = response['message']['content']
