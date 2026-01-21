@@ -2,6 +2,7 @@ import os
 import json # Added to parse the string response
 import uvicorn
 import ollama
+import re
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -16,7 +17,7 @@ load_dotenv()
 app = FastAPI()
 
 # Clients
-gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY_21"))
+gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY_1"))
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 class QueryRequest(BaseModel):
@@ -24,6 +25,26 @@ class QueryRequest(BaseModel):
     depth: str
     theme: str
     topic: str
+    qType: str
+
+def parse_ai_output(raw_text):
+    # 1. Check if raw_text is actually a string
+    if raw_text is None:
+        return {"question": "Error: Model returned no data.", "answer": "Check local server status."}
+    
+    # 2. Extract tags
+    question_match = re.search(r'<Question>(.*?)</Question>', raw_text, re.DOTALL)
+    answer_match = re.search(r'<Answer>(.*?)</Answer>', raw_text, re.DOTALL)
+
+    # 3. Fallback: If tags aren't found, give the user the raw output in the question box
+    # instead of just crashing or saying "Not Found"
+    question = question_match.group(1).strip() if question_match else raw_text.strip()
+    answer = answer_match.group(1).strip() if answer_match else "No tags detected. Logic may be embedded in text above."
+
+    return {
+        "question": question,
+        "answer": answer
+    }
 
 @app.get("/")
 async def serve_index():
@@ -32,27 +53,27 @@ async def serve_index():
 @app.post("/ask")
 async def ask_llm(req: QueryRequest):
     # The strictly defined prompt for diverse questions
+    # Refined implementation for your code
     prompt = (
-        f"Act as an expert academic assessment designer. Your goal is to generate 12-15 diverse "
-        f"questions for the topic '{req.topic}' themed as '{req.theme}' at {req.depth} level.\n\n"
+        "### ROLE\n"
+        "Act as an expert Academic Assessment Designer specializing in curriculum development.\n\n"
         
-        "### INSTRUCTION ###\n"
-        "You MUST include a mix of ALL the following question types:\n"
-        "1. Multiple Choice (MCQ) - with 4 distinct options (A, B, C, D)\n"
-        "2. Fill-in-the-Blanks - using underscores for the missing word\n"
-        "3. True/False - factual statements based on the theme\n"
-        "4. Short Answer - requiring 1-2 sentence explanations\n"
-        "5. Matching - list items to be paired (e.g., 1-A, 2-B)\n"
-        "6. Scenario-Based - a mini-story followed by a question\n\n"
+        "### TASK\n"
+        f"Generate a high-quality question based on:\n"
+        f"- QUESTION TYPE: {req.qType}\n"
+        f"- TOPIC: {req.topic}\n"
+        f"- THEME: {req.theme}\n"
+        f"- DEPTH: {req.depth}\n\n"
         
-        "### OUTPUT FORMAT RULES ###\n"
-        "Strictly wrap every question and every answer in these exact tags:\n"
-        "<Question> [The question text, including options if it is an MCQ] <Question>\n"
-        "<Answer> [The correct answer and a brief explanation] <Answer>\n\n"
+        "### CONSTRAINTS\n"
+        "1. If depth is 'High' or 'Application', include a situational scenario.\n"
+        "2. Ensure distractors are plausible and logically related.\n"
+        "3. Use professional academic language.\n\n"
         
-        "### EXAMPLE (Follow this structure) ###\n"
-        "<Question> What is the powerhouse of the cell?\nA) Nucleus\nB) Mitochondria\nC) Ribosome\nD) Golgi Body <Question>\n"
-        "<Answer> B) Mitochondria. It is responsible for ATP production. <Answer>\n"
+        "### OUTPUT FORMAT\n"
+        "Strictly wrap the content in these tags:\n"
+        "<Question> [Question text and options] </Question>\n"
+        "<Answer> [Correct answer] </Answer>"
     )
     
     try:
@@ -74,18 +95,19 @@ async def ask_llm(req: QueryRequest):
             ])
             raw_output = response['message']['content']
 
-        elif req.model_id == "chatgpt":
-            response = openai_client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": prompt}]
-            )
-            raw_output = response.choices[0].message.content
+        elif req.model_id == "qwen":
+            response = ollama.chat(model='qwen2.5:8b', messages=[
+                {'role': 'user', 'content': prompt}
+            ])
+            raw_output = response['message']['content']
         
         else:
             raw_output = "<Question> Local Mode Question <Question> <Answer> Local Answer <Answer>"
 
         # Return the raw text directly in the 'question' key
-        return {"question": raw_output}
+        # return {"question": raw_output}
+        formatted_response = parse_ai_output(raw_output)
+        return formatted_response
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
