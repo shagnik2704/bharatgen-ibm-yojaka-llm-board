@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from google import genai
 from openai import OpenAI
 from pathlib import Path
+import NCERT_RAG_PIPE.main as ncert_rag
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -100,6 +101,12 @@ async def ask_llm(req: QueryRequest):
                 {'role': 'user', 'content': prompt}
             ])
             raw_output = response['message']['content']
+
+        elif req.model_id == "rag-piped-param":
+            # response = ollama.chat(model='qwen3:8b', messages=[
+            #     {'role': 'user', 'content': prompt}
+            # ])
+            raw_output = ncert_rag.generate_rag_question(req.theme, req.topic)
         
         else:
             raw_output = "<Question> Local Mode Question <Question> <Answer> Local Answer <Answer>"
