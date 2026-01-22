@@ -1,76 +1,88 @@
 import os
-import re
-from langchain_community.document_loaders import PyPDFLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.vectorstores import FAISS
-from langchain.schema import Document
+import faiss
+import pickle
+import glob
+from pypdf import PdfReader
+from sentence_transformers import SentenceTransformer
 
+# -----------------------------
+# CONFIG
+# -----------------------------
 DATA_DIR = "data"
-DB_PATH = "vector_store/unified_ncert_index"
+CHUNK_SIZE = 1000 
+MODEL_NAME = "all-MiniLM-L6-v2"
+INDEX_PATH = "vector_db.index"
+CHUNKS_PATH = "chunks_metadata.pkl"
 
-# --- 1. INITIALIZE ONCE (Saves Memory/Time) ---
-embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-splitter = RecursiveCharacterTextSplitter(chunk_size=900, chunk_overlap=150)
+# -----------------------------
+# HELPER FUNCTIONS
+# -----------------------------
+def read_pdf(path):
+    """Extracts text from a single PDF file."""
+    try:
+        reader = PdfReader(path)
+        text = ""
+        for page in reader.pages:
+            content = page.extract_text()
+            if content:
+                text += content + " "
+        return text
+    except Exception as e:
+        print(f"⚠️ Error reading {path}: {e}")
+        return ""
 
-def ingest_all_books():
-    all_processed_docs = []
+def chunk_text(text, chunk_size=1000):
+    """Splits text into chunks of specified word count."""
+    words = text.split()
+    return [" ".join(words[i:i + chunk_size]) for i in range(0, len(words), chunk_size)]
+
+# -----------------------------
+# MAIN INGESTION LOGIC
+# -----------------------------
+def run_ingestion():
+    print("🚀 Starting Automated Ingestion...")
     
-    # Regex to catch: CHAPTER 1, Chapter I, CHAPTER One, Section 1, etc.
-    # Added \b for boundary and better newline handling
-    chapter_regex = r"(?i)\b(CHAPTER|Section)\s+([IVXLCDM\d]+|[a-zA-Z]+)"
-
-    if not os.path.exists(DATA_DIR):
-        print(f"❌ Error: {DATA_DIR} directory not found.")
+    # 1. Find all PDFs in the data folder
+    pdf_files = glob.glob(os.path.join(DATA_DIR, "*.pdf"))
+    
+    if not pdf_files:
+        print(f"❌ No PDF files found in '{DATA_DIR}' folder.")
         return
 
-    for filename in os.listdir(DATA_DIR):
-        if not filename.endswith(".pdf"):
-            continue
-            
-        book_name = os.path.splitext(filename)[0].replace("_", " ")
-        print(f"📖 Processing: {book_name}...")
-        
-        loader = PyPDFLoader(os.path.join(DATA_DIR, filename))
-        pages = loader.load()
+    print(f"📂 Found {len(pdf_files)} files: {[os.path.basename(f) for f in pdf_files]}")
 
-        # Start with 'Front Matter' to avoid false 'Introduction' labels
-        current_chapter = "front matter" 
+    # 2. Extract and Chunk
+    all_chunks = []
+    for path in pdf_files:
+        print(f"📖 Processing: {os.path.basename(path)}...")
+        file_text = read_pdf(path)
+        file_chunks = chunk_text(file_text, CHUNK_SIZE)
+        all_chunks.extend(file_chunks)
+    
+    print(f"📦 Total chunks created: {len(all_chunks)}")
 
-        for page in pages:
-            text = page.page_content
-            
-            # Check for chapter marker to update current_chapter
-            ch_match = re.search(chapter_regex, text)
-            if ch_match:
-                current_chapter = f"{ch_match.group(1)} {ch_match.group(2)}".lower()
-            
-            # Split page text into chunks
-            text_chunks = splitter.split_text(text)
-            
-            for chunk in text_chunks:
-                # Format context clearly for the LLM
-                contextual_text = f"Source: {book_name} | {current_chapter.title()}\nContent: {chunk}"
-                
-                all_processed_docs.append(Document(
-                    page_content=contextual_text,
-                    metadata={
-                        "book": book_name.lower(), 
-                        "chapter": current_chapter.lower(),
-                        "source": filename
-                    }
-                ))
+    # 3. Generate Embeddings
+    print("🧠 Generating embeddings (this may take a moment)...")
+    model = SentenceTransformer(MODEL_NAME)
+    embeddings = model.encode(all_chunks, show_progress_bar=True)
+    
+    # 4. Create and Save FAISS Index
+    dim = embeddings.shape[1]
+    index = faiss.IndexFlatL2(dim)
+    index.add(embeddings)
 
-    # --- 2. SAVE INDEX ---
-    if all_processed_docs:
-        print(f"📦 Creating FAISS index for {len(all_processed_docs)} chunks...")
-        vector_db = FAISS.from_documents(all_processed_docs, embeddings)
-        
-        os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-        vector_db.save_local(DB_PATH)
-        print(f"✅ Success! Saved index to {DB_PATH}")
-    else:
-        print("⚠️ No documents were processed.")
+    faiss.write_index(index, INDEX_PATH)
+    
+    # 5. Save Text Metadata
+    with open(CHUNKS_PATH, "wb") as f:
+        pickle.dump(all_chunks, f)
+    
+    print(f"✅ Success! Index saved to {INDEX_PATH}")
 
 if __name__ == "__main__":
-    ingest_all_books()
+    # Ensure data directory exists
+    if not os.path.exists(DATA_DIR):
+        os.makedirs(DATA_DIR)
+        print(f"📁 Created '{DATA_DIR}' folder. Place your PDFs there and re-run.")
+    else:
+        run_ingestion()

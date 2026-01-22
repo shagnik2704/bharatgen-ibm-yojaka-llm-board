@@ -55,6 +55,7 @@ async def serve_index():
 async def ask_llm(req: QueryRequest):
     # The strictly defined prompt for diverse questions
     # Refined implementation for your code
+    topic_chunk, theme_chunk = ncert_rag.main(req.theme, req.topic)
     prompt = (
         "### ROLE\n"
         "Act as an expert Academic Assessment Designer specializing in curriculum development.\n\n"
@@ -75,6 +76,42 @@ async def ask_llm(req: QueryRequest):
         "Strictly wrap the content in these tags:\n"
         "<Question> [Question text and options] </Question>\n"
         "<Answer> [Correct answer] </Answer>"
+    )
+    prompt2 = (
+        "### ROLE\n"
+        "Act as an expert Academic Assessment Designer specializing in psychometrics and Evidence-Centered Design. "
+        "Your goal is to synthesize specific reference materials into a high-validity assessment item.\n\n"
+        
+        "### INPUT PARAMETERS\n"
+        f"- QUESTION TYPE: {req.qType}\n"
+        f"- TOPIC: {req.topic}\n"
+        f"- THEME: {req.theme}\n"
+        f"- COGNITIVE DEPTH: {req.depth}\n\n"
+        
+        "### REFERENCE MATERIAL (RAG CONTEXT)\n"
+        "Use the following two content chunks as the EXCLUSIVE source of truth for the question content. "
+        "Do not use outside knowledge if it contradicts these chunks.\n"
+        f"--- [TOPIC CHUNK] ---\n{topic_chunk}\n--- [END TOPIC CHUNK] ---\n\n"
+        f"--- [THEME CHUNK] ---\n{theme_chunk}\n--- [END THEME CHUNK] ---\n\n"
+        
+        "### DESIGN CONSTRAINTS\n"
+        "1. **Context Integration:** The question must assess understanding of the [TOPIC CHUNK] while using the [THEME CHUNK] as the setting or application context.\n"
+        "2. **Depth Handling:**\n"
+        "   - If depth is 'Low/Recall': Focus on defining terms or stating facts found directly in the [TOPIC CHUNK].\n"
+        "   - If depth is 'High/Application': Create a situational scenario. The scenario must be built using the [THEME CHUNK], requiring the student to apply [TOPIC CHUNK] principles to solve it.\n"
+        "3. **Distractor Quality:** Distractors must be 'plausible distractors'—common misconceptions or partial truths derived from the text, not random errors.\n"
+        "4. **Formatting:** Use clear academic phrasing.\n\n"
+        
+        "### OUTPUT FORMAT\n"
+        "Strictly wrap the content in these tags. Do not include introductory text or reasoning:\n"
+        "<Question>\n"
+        "[Question Stem/Scenario]\n"
+        "[A. Option]\n"
+        "[B. Option]\n"
+        "[C. Option]\n"
+        "[D. Option]\n"
+        "</Question>\n"
+        "<Answer> [Correct Answer Letter and Text] </Answer>"
     )
     
     try:
@@ -103,10 +140,13 @@ async def ask_llm(req: QueryRequest):
             raw_output = response['message']['content']
 
         elif req.model_id == "rag-piped-param":
-            # response = ollama.chat(model='qwen3:8b', messages=[
-            #     {'role': 'user', 'content': prompt}
-            # ])
-            raw_output = ncert_rag.generate_rag_question(req.theme, req.topic)
+            response = ollama.chat(model='llama3', messages=[
+                {
+                    'role': 'user',
+                    'content': prompt2,
+                },
+            ])
+            raw_output = response['message']['content']
         
         else:
             raw_output = "<Question> Local Mode Question <Question> <Answer> Local Answer <Answer>"
