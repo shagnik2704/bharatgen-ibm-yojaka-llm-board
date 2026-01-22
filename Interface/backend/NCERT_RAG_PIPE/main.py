@@ -59,6 +59,3 @@ def main(topic_input, theme_input):
 
     # Return as a dictionary for your Assessment Prompt logic
     return topic_chunk, theme_chunk
-
-if __name__ == "__main__":
-    data = main()
