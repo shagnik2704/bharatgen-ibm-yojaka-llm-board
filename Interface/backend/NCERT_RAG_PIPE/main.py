@@ -1,12 +1,16 @@
+import os
 import faiss
 import pickle
 from sentence_transformers import SentenceTransformer
 
-# CONFIG
-INDEX_PATH = "vector_db.index"
-CHUNKS_PATH = "chunks_metadata.pkl"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Build absolute paths to the database files
+INDEX_PATH = os.path.join(BASE_DIR, "vector_db.index")
+CHUNKS_PATH = os.path.join(BASE_DIR, "chunks_metadata.pkl")
+
 MODEL_NAME = "all-MiniLM-L6-v2"
-DEFAULT_K = 1  # Get the single most similar chunk
+DEFAULT_K = 1
 
 class RAGRetriever:
     def __init__(self):
