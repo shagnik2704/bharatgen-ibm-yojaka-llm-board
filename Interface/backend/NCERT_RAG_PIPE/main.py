@@ -35,12 +35,8 @@ class RAGRetriever:
         
         return "\n\n".join(retrieved_texts), best_score
 
-def main():
+def main(topic_input, theme_input):
     retriever = RAGRetriever()
-
-    # 1. User Inputs
-    topic_input = input("Enter Topic: ").strip()
-    theme_input = input("Enter Theme: ").strip()
 
     # 2. Retrieval
     topic_chunk, t_score = retriever.get_context(topic_input)
