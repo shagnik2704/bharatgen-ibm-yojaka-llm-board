@@ -55,7 +55,7 @@ async def serve_index():
 async def ask_llm(req: QueryRequest):
     # The strictly defined prompt for diverse questions
     # Refined implementation for your code
-    topic_chunk, theme_chunk = ncert_rag.main(req.theme, req.topic)
+    topic_chunk, theme_chunk  = ncert_rag.main(req.theme, req.topic)
     prompt = (
         "### ROLE\n"
         "Act as an expert Academic Assessment Designer specializing in curriculum development.\n\n"
@@ -89,8 +89,7 @@ async def ask_llm(req: QueryRequest):
         f"- COGNITIVE DEPTH: {req.depth}\n\n"
         
         "### REFERENCE MATERIAL (RAG CONTEXT)\n"
-        "Use the following two content chunks as the EXCLUSIVE source of truth for the question content. "
-        "Do not use outside knowledge if it contradicts these chunks.\n"
+        "Use the following two content chunks are some reference material use them if found relevant other wise ignore"
         f"--- [TOPIC CHUNK] ---\n{topic_chunk}\n--- [END TOPIC CHUNK] ---\n\n"
         f"--- [THEME CHUNK] ---\n{theme_chunk}\n--- [END THEME CHUNK] ---\n\n"
         

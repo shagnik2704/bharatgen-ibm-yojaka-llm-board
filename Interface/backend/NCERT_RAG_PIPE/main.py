@@ -62,12 +62,7 @@ def main():
     print("\n" + "="*80)
 
     # Return as a dictionary for your Assessment Prompt logic
-    return {
-        "topic": topic_chunk,
-        "theme": theme_chunk,
-        "topic_score": t_score,
-        "theme_score": th_score
-    }
+    return topic_chunk, theme_chunk
 
 if __name__ == "__main__":
     data = main()
