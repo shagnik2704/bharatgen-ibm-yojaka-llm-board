@@ -3,51 +3,86 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 
-# Load Model (Using Param-1-2.9B as requested)
+# 1. Load Model with Security and Memory Fixes
 MODEL_ID = "bharatgenai/Param-1-2.9B-Instruct"
-tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
-model = AutoModelForCausalLM.from_pretrained(MODEL_ID, torch_dtype=torch.bfloat16, device_map="auto")
 
-# Load Vector DB
+# Added trust_remote_code=True to resolve the ValueError
+tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, trust_remote_code=True)
+model = AutoModelForCausalLM.from_pretrained(
+    MODEL_ID, 
+    torch_dtype=torch.bfloat16, 
+    device_map="auto",
+    trust_remote_code=True,      # Required for Param architecture
+    low_cpu_mem_usage=True       # Helps with large model loading
+)
+
+# 2. Load Vector DB
 embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-vector_db = FAISS.load_local("vector_store/unified_ncert_index", embeddings, allow_dangerous_deserialization=True)
+vector_db = FAISS.load_local(
+    "vector_store/unified_ncert_index", 
+    embeddings, 
+    allow_dangerous_deserialization=True
+)
 
 def generate_rag_question(theme, topic):
     """
-    Finds chunks based on theme/topic and generates a question.
-    'Theme' is used for filtering; if no exact match is found, 
-    it falls back to a semantic search across everything.
+    Retrieves relevant NCERT chunks based on theme and topic, 
+    then uses Param-1 to generate a question.
     """
-    theme_clean = theme.lower()
+    theme_clean = theme.lower().strip()
     
-    # Try filtering by metadata first (Book or Chapter)
-    results = []
-    # Check if theme matches a book
+    # --- SMART RETRIEVAL LOGIC ---
+    # Attempt 1: Filter by Book
     results = vector_db.similarity_search(topic, k=3, filter={"book": theme_clean})
     
-    # If no book found, check if it matches a chapter
+    # Attempt 2: Filter by Chapter
     if not results:
         results = vector_db.similarity_search(topic, k=3, filter={"chapter": theme_clean})
     
-    # FALLBACK: If still no results, perform a global semantic search including the theme
+    # Attempt 3: Global Semantic Fallback
     if not results:
-        print(f"🔍 No exact metadata match for '{theme}'. Performing global semantic search...")
+        print(f"🔍 No metadata match for '{theme}'. Searching all books semantically...")
         results = vector_db.similarity_search(f"{theme} {topic}", k=3)
 
+    # Combine retrieved text
     context = "\n\n".join([doc.page_content for doc in results])
     
-    # Generate Prompt
-    prompt = f"System: Use the NCERT context below to generate a conceptual question.\nContext: {context}\nTopic: {topic}\nQuestion:"
-    
-    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-    outputs = model.generate(**inputs, max_new_tokens=120, temperature=0.7)
-    
-    return tokenizer.decode(outputs[0], skip_special_tokens=True).split("Question:")[-1].strip()
+    # --- CHAT PROMPT TEMPLATE ---
+    # Param-1 uses an Instruct format. We use markers to guide it.
+    prompt = f"""<|system|>
+You are an expert NCERT teacher. Use the provided context to create a conceptual question.
+<|user|>
+CONTEXT:
+{context}
 
-# # Example Test
-# if __name__ == "__main__":
-#     # Test 1: By Book
-#     print("Test 1 (Book):", generate_rag_question("physics 11th", "Newton's laws"))
+TOPIC: {topic}
+<|assistant|>
+Question:"""
     
-#     # Test 2: By Chapter
-#     print("Test 2 (Chapter):", generate_rag_question("chapter i", "Rise of Nationalism"))
+    # --- INFERENCE ---
+    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+    
+    with torch.no_grad():
+        outputs = model.generate(
+            **inputs, 
+            max_new_tokens=100, 
+            temperature=0.4,   # Lower temperature for more factual/precise questions
+            do_sample=True,
+            pad_token_id=tokenizer.eos_token_id
+        )
+    
+    # Decode and extract only the assistant's answer
+    decoded_output = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    
+    # Logic to split the output and get only the generated question
+    if "Question:" in decoded_output:
+        return decoded_output.split("Question:")[-1].strip()
+    return decoded_output
+
+if __name__ == "__main__":
+    # Test cases to verify the logic
+    print("\n--- TEST: PHYSICS ---")
+    print(generate_rag_question("physics_11th", "Escape velocity"))
+    
+    print("\n--- TEST: HISTORY ---")
+    print(generate_rag_question("history_10th", "The Salt March"))
