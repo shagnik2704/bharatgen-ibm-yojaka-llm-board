@@ -83,7 +83,7 @@ Question:"""
 if __name__ == "__main__":
     # Test cases to verify the logic
     print("\n--- TEST: PHYSICS ---")
-    print(generate_rag_question("physics_11th", "Motion"))
+    print(generate_rag_question("physics_11th", "Units and Measurements"))
     
     # print("\n--- TEST: HISTORY ---")
     # print(generate_rag_question("history_10th", "The Salt March"))
