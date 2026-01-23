@@ -3,260 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LLM Arena v2 - DOK Evaluator</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
-        body { font-family: 'JetBrains+Mono', monospace; }
-        .custom-glow { box-shadow: 0 0 25px rgba(59, 130, 246, 0.15); }
-        .loading-dots:after { content: '.'; animation: dots 1.5s steps(5, end) infinite; }
-        @keyframes dots { 0%, 20% { content: '.'; } 40% { content: '..'; } 60% { content: '...'; } 80%, 100% { content: ''; } }
-        .output-container { scroll-behavior: smooth; }
-    </style>
-</head>
-<body class="bg-[#0b0f1a] text-slate-300 min-h-screen flex items-center justify-center p-6">
-
-    <div class="w-full max-w-3xl bg-[#161b2b] rounded-3xl border border-slate-800 p-8 custom-glow">
-        
-        <div class="flex items-center justify-between mb-8 border-b border-slate-800 pb-5">
-            <div>
-                <h1 class="text-xl font-bold text-white tracking-tighter">LLM_ARENA_INTERFACE</h1>
-                <p class="text-[10px] text-blue-500 font-bold uppercase tracking-[0.2em]">DOK Question Generator</p>
-            </div>
-            <div class="flex gap-2 text-xs text-slate-500 font-bold">STABLE_V2.2</div>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <div>
-                <label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1">1. Depth of Knowledge (DOK)</label>
-                <select id="depth" class="w-full bg-[#0b0f1a] border border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500 text-sm text-white">
-                    <option value="DOK level 1: Recall and Reproduction">DOK level 1: Recall and Reproduction</option>
-                    <option value="DOK level 2: Basic skills and concepts">DOK level 2: Basic skills and concepts</option>
-                    <option value="DOK level 3: Strategic thinking and reasoning">DOK level 3: Strategic thinking and reasoning</option>
-                    <option value="DOK level 4: Extended Thinking">DOK level 4: Extended Thinking</option>
-                </select>
-            </div>
-            
-            <div>
-                <label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1">2. Theme / Context</label>
-                <input id="theme" type="text" placeholder="e.g. Cyberpunk, Medieval" 
-                    class="w-full bg-[#0b0f1a] border border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500 text-sm text-white">
-            </div>
-        </div>
-
-        <div class="mb-6">
-            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1">3. Topic</label>
-            <input id="topic" type="text" placeholder="e.g. Photosynthesis" 
-                class="w-full bg-[#0b0f1a] border border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500 text-sm text-white">
-        </div>
-
-        <div class="mb-6">
-            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1">4. Select Engine</label>
-            <select id="modelSelect" class="w-full bg-[#0b0f1a] border border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500 text-sm text-white">
-                <option value="gemini">Google Gemini 1.5 Flash</option>
-                <option value="chatgpt">OpenAI GPT-4o</option>
-                <option value="local-llama">Local Llama</option>
-            </select>
-        </div>
-
-        <button onclick="fetchAnswer()" id="runBtn" class="w-full bg-blue-600 hover:bg-blue-500 py-4 rounded-xl font-bold text-white shadow-lg transition-all active:scale-[0.98]">
-            EXECUTE EVALUATION
-        </button>
-
-        <div id="responseArea" class="mt-8 hidden space-y-6 output-container">
-            <div class="animate-in fade-in duration-500">
-                <div class="flex items-center justify-between mb-2 px-1">
-                    <div class="flex items-center gap-2">
-                        <span id="activeModelTag" class="text-[9px] font-bold px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 uppercase tracking-widest">GEMINI</span>
-                        <span class="text-[9px] text-slate-600 uppercase">● Raw Output Block</span>
-                    </div>
-                    <button onclick="copyText('questionText')" class="text-[9px] text-slate-500 hover:text-white transition-colors uppercase font-bold">Copy Output</button>
-                </div>
-                <div id="questionText" class="w-full bg-black/40 border border-slate-800 rounded-2xl p-6 text-sm leading-relaxed whitespace-pre-wrap text-slate-200 min-h-[60px]">
-                    ...
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        async function fetchAnswer() {
-            const topic = document.getElementById('topic').value;
-            const theme = document.getElementById('theme').value || "Standard";
-            
-            if (!topic.trim()) return alert("Please enter a topic.");
-
-            const btn = document.getElementById('runBtn');
-            const outputArea = document.getElementById('responseArea');
-            const qText = document.getElementById('questionText');
-            const tag = document.getElementById('activeModelTag');
-
-            // Set UI to loading state
-            btn.innerHTML = 'PROCESSING <span class="loading-dots"></span>';
-            btn.disabled = true;
-            btn.classList.add('opacity-50', 'cursor-not-allowed');
-            
-            outputArea.classList.remove('hidden');
-            qText.innerText = "Requesting content from LLM...";
-            tag.innerText = document.getElementById('modelSelect').value.toUpperCase();
-
-            try {
-                const response = await fetch('/ask', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        model_id: document.getElementById('modelSelect').value,
-                        depth: document.getElementById('depth').value,
-                        theme: theme,
-                        topic: topic
-                    })
-                });
-
-                const data = await response.json();
-                
-                if (response.ok) {
-                    // Inject raw response into the single output box
-                    qText.innerText = data.question;
-                } else {
-                    throw new Error(data.detail || "Server Error");
-                }
-
-            } catch (error) {
-                qText.innerHTML = `<span class="text-red-400 font-bold underline">ERROR:</span> ${error.message}`;
-            } finally {
-                // Reset UI state
-                btn.innerHTML = 'EXECUTE EVALUATION';
-                btn.disabled = false;
-                btn.classList.remove('opacity-50', 'cursor-not-allowed');
-            }
-        }
-
-        function copyText(id) {
-            const text = document.getElementById(id).innerText;
-            navigator.clipboard.writeText(text);
-            alert("Copied to clipboard!");
-        }
-    </script>
-</body>
-</html> -->
-<!------------------------------------------------
-
-<!-- <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LLM Arena v2 - DOK Evaluator</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
-        body { font-family: 'JetBrains+Mono', monospace; }
-        .custom-glow { box-shadow: 0 0 25px rgba(59, 130, 246, 0.15); }
-        .loading-dots:after { content: '.'; animation: dots 1.5s steps(5, end) infinite; }
-        @keyframes dots { 0%, 20% { content: '.'; } 40% { content: '..'; } 60% { content: '...'; } 80%, 100% { content: ''; } }
-        .output-container { scroll-behavior: smooth; }
-    </style>
-</head>
-<body class="bg-[#0b0f1a] text-slate-300 min-h-screen flex items-center justify-center p-6">
-
-    <div class="w-full max-w-3xl bg-[#161b2b] rounded-3xl border border-slate-800 p-8 custom-glow">
-        
-        <div class="flex items-center justify-between mb-8 border-b border-slate-800 pb-5">
-            <div>
-                <h1 class="text-xl font-bold text-white tracking-tighter">LLM_ARENA_INTERFACE</h1>
-                <p class="text-[10px] text-blue-500 font-bold uppercase tracking-[0.2em]">DOK Question Generator</p>
-            </div>
-            <div class="flex gap-2 text-xs text-slate-500 font-bold">STABLE_V2.2</div>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <div>
-                <label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1">1. Depth of Knowledge (DOK)</label>
-                <select id="depth" class="w-full bg-[#0b0f1a] border border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500 text-sm text-white">
-                    <option value="DOK level 1: Recall and Reproduction">DOK level 1: Recall and Reproduction</option>
-                    <option value="DOK level 2: Basic skills and concepts">DOK level 2: Basic skills and concepts</option>
-                    <option value="DOK level 3: Strategic thinking and reasoning">DOK level 3: Strategic thinking and reasoning</option>
-                    <option value="DOK level 4: Extended Thinking">DOK level 4: Extended Thinking</option>
-                </select>
-            </div>
-            
-            <div>
-                <label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1">2. Question Type</label>
-                <select id="qType" class="w-full bg-[#0b0f1a] border border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500 text-sm text-white">
-                    <option value="Multiple Choice (MCQ)">Multiple Choice (MCQ)</option>
-                    <option value="Short Answer">Short Answer</option>
-                    <option value="True/False">True/False</option>
-                    <option value="Essay Prompt">Essay Prompt</option>
-                    <option value="Case Study Analysis">Case Study Analysis</option>
-                    <option value="Scenario-Based Problem">Scenario-Based Problem</option>
-                    <option value="Matching Items">Matching Items</option>
-                    <option value="Fill-in-the-Blanks">Fill-in-the-Blanks</option>
-                </select>
-            </div>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <div>
-                <label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1">3. Theme / Context</label>
-                <input id="theme" type="text" placeholder="e.g. Cyberpunk, Medieval" 
-                    class="w-full bg-[#0b0f1a] border border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500 text-sm text-white">
-            </div>
-            <div>
-                <label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1">4. Topic</label>
-                <input id="topic" type="text" placeholder="e.g. Photosynthesis" 
-                    class="w-full bg-[#0b0f1a] border border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500 text-sm text-white">
-            </div>
-        </div>
-
-        <div class="mb-6">
-            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1">5. Select Engine</label>
-            <select id="modelSelect" class="w-full bg-[#0b0f1a] border border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500 text-sm text-white">
-                <option value="local-llama">Local Llama 3</option>
-                <option value="qwen">Alibaba Qwen 2.5 (8B)</option>
-                <option value="gemini">Google Gemini 3 Flash Preview</option>
-            </select>
-        </div>
-
-        <button onclick="fetchAnswer()" id="runBtn" class="w-full bg-blue-600 hover:bg-blue-500 py-4 rounded-xl font-bold text-white shadow-lg transition-all active:scale-[0.98]">
-            EXECUTE EVALUATION
-        </button>
-
-        <div id="responseArea" class="mt-8 hidden space-y-6 output-container">
-            
-            <div class="animate-in fade-in duration-500">
-                <div class="flex items-center justify-between mb-2 px-1">
-                    <div class="flex items-center gap-2">
-                        <span id="activeModelTag" class="text-[9px] font-bold px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 uppercase tracking-widest">GEMINI</span>
-                        <span class="text-[9px] text-slate-600 uppercase">● Generated Question</span>
-                    </div>
-                    <button onclick="copyText('questionText')" class="text-[9px] text-slate-500 hover:text-white transition-colors uppercase font-bold">Copy</button>
-                </div>
-                <div id="questionText" class="w-full bg-black/40 border border-slate-800 rounded-2xl p-6 text-sm leading-relaxed whitespace-pre-wrap text-slate-200 min-h-[60px]">
-                    ...
-                </div>
-            </div>
-
-            <div class="animate-in fade-in slide-in-from-bottom-4 duration-700">
-                <div class="flex items-center justify-between mb-2 px-1">
-                    <div class="flex items-center gap-2">
-                        <span class="text-[9px] font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase tracking-widest">ANSWER KEY</span>
-                        <span class="text-[9px] text-slate-600 uppercase">● Logic & Explanation</span>
-                    </div>
-                    <button onclick="copyText('answerText')" class="text-[9px] text-slate-500 hover:text-white transition-colors uppercase font-bold">Copy</button>
-                </div>
-                <div id="answerText" class="w-full bg-emerald-950/10 border border-emerald-900/30 rounded-2xl p-6 text-sm leading-relaxed whitespace-pre-wrap text-emerald-100/80 min-h-[60px]">
-                    ...
-                </div>
-            </div>
-
-        </div>
-    </div> -->
-
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BharatGen - Yojaka Evaluator</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -326,7 +72,7 @@
                 <option value="local-llama">Local Llama 3</option>
                 <option value="qwen">Alibaba Qwen 3 (8B)</option>
                 <option value="granite3.3:8b">Granite 3 (8B)</option>
-                <option value="rag-piped-param">RAG-Piped Llama</option>
+                <option value="rag-piped-llama">RAG-Piped Llama</option>
                 <option value="gemini">Google Gemini 3 Flash Preview</option>
             </select>
         </div>
@@ -433,6 +179,202 @@
             btn.innerText = "COPIED!";
             setTimeout(() => btn.innerText = "COPY", 1500);
         }
+    </script>
+</body>
+</html> -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BharatGen - NCERT Arena</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;500;700&display=swap');
+        body { font-family: 'Space Grotesk', sans-serif; background-color: #050810; color: #e2e8f0; }
+        .glass-panel { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.05); }
+        .accent-math { color: #3b82f6; border-color: #3b82f6; }
+        .accent-phy { color: #a855f7; border-color: #a855f7; }
+        .accent-chem { color: #10b981; border-color: #10b981; }
+        .accent-bio { color: #f43f5e; border-color: #f43f5e; }
+        .active-subject { background: rgba(59, 130, 246, 0.2); border-color: #3b82f6 !important; transform: scale(1.05); }
+        .loading-shimmer { background: linear-gradient(90deg, #0f172a 25%, #1e293b 50%, #0f172a 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
+        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-10">
+
+    <header class="max-w-6xl mx-auto flex justify-between items-center mb-12">
+        <div>
+            <h1 class="text-3xl font-bold tracking-tighter italic">BHARAT<span class="text-blue-500">GEN</span></h1>
+            <div class="h-1 w-12 bg-blue-500 rounded-full mt-1"></div>
+        </div>
+        <div class="flex items-center gap-4">
+            <span id="currentModelLabel" class="hidden md:block text-[10px] font-bold text-slate-500 uppercase tracking-widest">Engine: Gemini 3 Flash</span>
+            <button onclick="toggleSettings()" class="w-10 h-10 glass-panel rounded-full flex items-center justify-center hover:bg-slate-800 transition">
+                <i class="fa-solid fa-sliders"></i>
+            </button>
+        </div>
+    </header>
+
+    <div id="settingsModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+        <div class="glass-panel p-8 rounded-3xl w-full max-w-md border border-slate-700">
+            <h3 class="text-xl font-bold mb-6 text-white">Execution Settings</h3>
+            <label class="text-xs font-bold text-slate-400 uppercase">Primary LLM Engine</label>
+            <select id="modelSelect" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-4 mt-2 text-white outline-none focus:border-blue-500">
+                <option value="gemini">Google Gemini 3 Flash Preview</option>
+                <option value="chatgpt">OpenAI GPT-4o</option>
+                <option value="local-llama">Local Llama 3</option>
+                <option value="qwen">Alibaba Qwen 3 (8B)</option>
+                <option value="granite3.3:8b">Granite 3 (8B)</option>
+                <option value="rag-piped-llama">RAG-Piped Llama</option>
+            </select>
+            <button onclick="toggleSettings()" class="w-full bg-blue-600 mt-8 py-4 rounded-xl font-bold hover:bg-blue-500 transition">Save Configuration</button>
+        </div>
+    </div>
+
+    <main class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
+        
+        <aside class="lg:col-span-4 space-y-6">
+            <div class="glass-panel p-6 rounded-[2rem] space-y-6">
+                
+                <div>
+                    <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Select Subject</label>
+                    <div class="grid grid-cols-2 gap-3 mt-3">
+                        <button onclick="setSubject('Math', this)" class="subj-btn border border-slate-800 p-3 rounded-2xl text-xs font-bold transition-all hover:border-blue-500">MATHEMATICS</button>
+                        <button onclick="setSubject('Physics', this)" class="subj-btn border border-slate-800 p-3 rounded-2xl text-xs font-bold transition-all hover:border-purple-500">PHYSICS</button>
+                        <button onclick="setSubject('Chemistry', this)" class="subj-btn border border-slate-800 p-3 rounded-2xl text-xs font-bold transition-all hover:border-emerald-500">CHEMISTRY</button>
+                        <button onclick="setSubject('Biology', this)" class="subj-btn border border-slate-800 p-3 rounded-2xl text-xs font-bold transition-all hover:border-rose-500">BIOLOGY</button>
+                    </div>
+                </div>
+
+                <div class="space-y-3">
+                    <input id="chapter" type="text" placeholder="NCERT Chapter (e.g. Integration)" class="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm outline-none focus:border-blue-500 transition">
+                    <input id="topic" type="text" placeholder="Specific Topic (e.g. Parts)" class="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm outline-none focus:border-blue-500 transition">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <select id="depth" class="bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs font-bold outline-none focus:border-blue-500">
+                        <option value="Low">RECALL</option>
+                        <option value="Medium">APPLICATION</option>
+                        <option value="High">STRATEGIC</option>
+                    </select>
+                    <input id="qCount" type="number" value="3" min="1" max="10" class="bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs font-bold outline-none focus:border-blue-500">
+                </div>
+
+                <button onclick="startSession()" id="genBtn" class="w-full bg-white text-black py-4 rounded-2xl font-black text-sm tracking-tighter hover:bg-blue-500 hover:text-white transition-all shadow-xl shadow-blue-500/10">
+                    GENERATE NCERT BATTLE
+                </button>
+            </div>
+        </aside>
+
+        <section class="lg:col-span-8">
+            <div id="welcomeView" class="glass-panel h-[500px] rounded-[3rem] flex flex-col items-center justify-center text-center p-10">
+                <div class="w-20 h-20 bg-blue-500/10 rounded-full flex items-center justify-center mb-6">
+                    <i class="fa-solid fa-bolt-lightning text-blue-500 text-2xl"></i>
+                </div>
+                <h2 class="text-2xl font-bold">Ready for a Challenge?</h2>
+                <p class="text-slate-500 mt-2 text-sm max-w-xs">Select your subject and chapter to generate NCERT-aligned questions.</p>
+            </div>
+
+            <div id="questionView" class="hidden space-y-4">
+                <div class="flex justify-between items-center px-4">
+                    <span id="progressBar" class="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Question 1 of 3</span>
+                    <div class="flex gap-2">
+                        <button onclick="prevQ()" class="w-10 h-10 glass-panel rounded-xl flex items-center justify-center hover:bg-slate-800"><i class="fa-solid fa-arrow-left"></i></button>
+                        <button onclick="nextQ()" class="w-10 h-10 glass-panel rounded-xl flex items-center justify-center hover:bg-slate-800"><i class="fa-solid fa-arrow-right"></i></button>
+                    </div>
+                </div>
+
+                <div class="glass-panel p-10 rounded-[3rem] border-t-4 border-blue-500 min-h-[300px] flex flex-col justify-center">
+                    <div id="qContent" class="text-xl leading-relaxed text-white">...</div>
+                </div>
+
+                <div class="space-y-4">
+                    <button id="revealBtn" onclick="toggleAnswer()" class="w-full py-4 rounded-2xl border-2 border-dashed border-slate-800 text-slate-500 font-bold hover:border-emerald-500 hover:text-emerald-500 transition">
+                        REVEAL ANSWER & LOGIC
+                    </button>
+                    <div id="aContent" class="hidden glass-panel p-8 rounded-[2rem] border-l-4 border-emerald-500 bg-emerald-500/5 text-emerald-100 italic leading-relaxed">
+                        ...
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        let questions = [];
+        let cursor = 0;
+        let activeSubject = "";
+
+        function toggleSettings() { 
+            document.getElementById('settingsModal').classList.toggle('hidden');
+            const model = document.getElementById('modelSelect').value;
+            document.getElementById('currentModelLabel').innerText = `Engine: ${model}`;
+        }
+
+        function setSubject(s, btn) {
+            activeSubject = s;
+            document.querySelectorAll('.subj-btn').forEach(b => b.classList.remove('active-subject'));
+            btn.classList.add('active-subject');
+        }
+
+        function toggleAnswer() {
+            const a = document.getElementById('aContent');
+            a.classList.toggle('hidden');
+            document.getElementById('revealBtn').innerText = a.classList.contains('hidden') ? "REVEAL ANSWER & LOGIC" : "HIDE LOGIC";
+        }
+
+        async function startSession() {
+            const btn = document.getElementById('genBtn');
+            const topic = document.getElementById('topic').value;
+            if(!activeSubject || !topic) return alert("Pick a Subject and Topic!");
+
+            // UI Transition
+            questions = []; cursor = 0;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> COGITATING...';
+            document.getElementById('welcomeView').classList.add('hidden');
+            document.getElementById('questionView').classList.remove('hidden');
+            document.getElementById('qContent').className = "loading-shimmer h-24 rounded-2xl w-full";
+            
+            const count = document.getElementById('qCount').value;
+
+            for(let i=0; i<count; i++) {
+                try {
+                    const res = await fetch('/ask', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            model_id: document.getElementById('modelSelect').value,
+                            depth: document.getElementById('depth').value,
+                            subject: activeSubject,
+                            chapter: document.getElementById('chapter').value,
+                            topic: topic,
+                            qType: "MCQ"
+                        })
+                    });
+                    const data = await res.json();
+                    questions.push(data);
+                    if(i === 0) renderQ();
+                } catch(e) { console.error(e); }
+            }
+            btn.innerText = "GENERATE NCERT BATTLE";
+        }
+
+        function renderQ() {
+            const q = questions[cursor];
+            document.getElementById('qContent').className = "text-xl leading-relaxed text-white";
+            document.getElementById('qContent').innerText = q.question;
+            document.getElementById('aContent').innerText = q.answer;
+            document.getElementById('aContent').classList.add('hidden');
+            document.getElementById('progressBar').innerText = `Question ${cursor + 1} of ${questions.length}`;
+            document.getElementById('revealBtn').innerText = "REVEAL ANSWER & LOGIC";
+        }
+
+        function nextQ() { if(cursor < questions.length - 1) { cursor++; renderQ(); } }
+        function prevQ() { if(cursor > 0) { cursor--; renderQ(); } }
     </script>
 </body>
 </html>
