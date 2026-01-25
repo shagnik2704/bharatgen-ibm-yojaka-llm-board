@@ -170,6 +170,7 @@
 
 import os
 import re
+import traceback
 import ollama
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
@@ -471,4 +472,5 @@ async def ask_llm(req: QueryRequest):
         print(raw_output+"\n")
         return parse_ai_output(raw_output)
     except Exception as e:
+        print(traceback.format_exc()) # This will print the full error to your terminal
         raise HTTPException(status_code=500, detail=str(e))
