@@ -268,35 +268,28 @@ def parse_ai_output(raw_text):
     if not raw_text:
         return []
 
-    # 1. Clean up potential LLM "pre-tag" errors (like a stray closing tag at the start)
-    # This removes any </Question> that appears before the first <Question>
-    first_open = raw_text.find("<Question>")
-    if first_open != -1:
-        raw_text = raw_text[first_open:]
+    # Regex explanation:
+    # (?i) makes it case-insensitive
+    # <question> matches the opening tag
+    # (.*?) non-greedily captures everything until...
+    # </question> the closing tag
+    q_pattern = re.compile(r'<(?:[Qq]uestion)>(.*?)</(?:[Qq]uestion)>', re.DOTALL)
+    a_pattern = re.compile(r'<(?:[Aa]nswer)>(.*?)</(?:[Aa]nswer)>', re.DOTALL)
 
-    # 2. Use a more robust findall
-    # We use (?:...) to handle cases where the model might use lowercase tags
-    questions = re.findall(r'<[Qq]uestion>(.*?)</[Qq]uestion>', raw_text, re.DOTALL)
-    answers = re.findall(r'<[Aa]nswer>(.*?)</[Aa]nswer>', raw_text, re.DOTALL)
+    questions = q_pattern.findall(raw_text)
+    answers = a_pattern.findall(raw_text)
 
     results = []
-    # Use the length of questions as the master count
     for i in range(len(questions)):
-        q_text = questions[i].strip()
-        
-        # If the LLM hallucinated an extra </Question> inside the text, clean it
-        q_text = q_text.replace("</Question>", "").replace("<Question>", "").strip()
-        
-        a_text = answers[i].strip() if i < len(answers) else "No answer provided."
-        
+        # Clean up any leftover markdown headers the AI might have snuck inside the tags
+        clean_q = re.sub(r'(\*\*Question \d+\*\*|Question \d+:)', '', questions[i]).strip()
+        clean_a = re.sub(r'(\*\*Answer\*\*|Answer:)', '', answers[i]).strip() if i < len(answers) else "No answer provided."
+
         results.append({
-            "question": q_text,
-            "answer": a_text
+            "question": clean_q,
+            "answer": clean_a
         })
 
-    if not results:
-        return [{"question": raw_text.strip(), "answer": "No valid tags found."}]
-        
     return results
 
 
@@ -333,7 +326,7 @@ async def ask_llm(req: QueryRequest):
         "3. For numericals, provide a step-by-step logical breakdown in the Answer section.\n"
         "4. Use LaTeX for all mathematical formulas and chemical equations (e.g., $E=mc^2$).\n\n"
 
-        "### OUTPUT FORMAT\n"
+        "### OUTPUT FORMAT (FOLLOW EXACTLY)\n"
         "Generate each question in the following structure. Repeat this block for every question:\n"
         "<Question>\n[Question text here. If MCQ, include options A, B, C, D]\n</Question>\n"
         "<Answer>\n[Correct answer with a 2-sentence explanation of the underlying concept]\n</Answer>"
