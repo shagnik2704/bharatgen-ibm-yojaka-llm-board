@@ -420,6 +420,7 @@ async def ask_llm(req: QueryRequest):
             raw_output = response['message']['content']
         elif req.model_id == "param.1:7b":
             inputs = tokenizer(prompt, return_tensors="pt", return_token_type_ids=False).to(model.device)
+
             with torch.no_grad():
                 output = model.generate(
                     **inputs,
@@ -429,7 +430,8 @@ async def ask_llm(req: QueryRequest):
                     top_p=0.95,
                     temperature=0.6,
                     eos_token_id=tokenizer.eos_token_id,
-                    use_cache=False
+                    use_cache=True,  # Changed to True for speed
+                    pad_token_id=tokenizer.pad_token_id # Good practice to include
                 )
             raw_output = tokenizer.decode(output[0], skip_special_tokens=True)
         elif req.model_id == "rag-piped-param":
@@ -468,6 +470,7 @@ async def ask_llm(req: QueryRequest):
                 "<Answer> [Correct Answer + 1-sentence logic based on the Source Material] </Answer>"
             )
             inputs = tokenizer(prompt_rag, return_tensors="pt", return_token_type_ids=False).to(model.device)
+
             with torch.no_grad():
                 output = model.generate(
                     **inputs,
@@ -477,7 +480,8 @@ async def ask_llm(req: QueryRequest):
                     top_p=0.95,
                     temperature=0.6,
                     eos_token_id=tokenizer.eos_token_id,
-                    use_cache=False
+                    use_cache=True,  # Changed to True for speed
+                    pad_token_id=tokenizer.pad_token_id # Good practice to include
                 )
             raw_output = tokenizer.decode(output[0], skip_special_tokens=True)
         else:
