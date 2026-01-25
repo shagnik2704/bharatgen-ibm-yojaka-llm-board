@@ -459,7 +459,7 @@ async def ask_llm(req: QueryRequest):
             raw_output = tokenizer.decode(output[0], skip_special_tokens=True)
         else:
             raw_output = "<Question>Model not found.</Question><Answer>N/A</Answer>"
-
+        print(raw_output+"\n")
         return parse_ai_output(raw_output)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
