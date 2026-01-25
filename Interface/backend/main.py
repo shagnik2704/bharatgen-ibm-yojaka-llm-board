@@ -399,7 +399,7 @@ async def ask_llm(req: QueryRequest):
         elif req.model_id == "param.1:7b":
             model_name = BASE_DIR / os.getenv("PARAM1_7B_RELATIVE_PATH")
             print(model_name)
-            tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=False)
+            tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False, trust_remote_code=False)
             model = AutoModelForCausalLM.from_pretrained(
                 model_name,
                 trust_remote_code=True,
@@ -453,6 +453,15 @@ async def ask_llm(req: QueryRequest):
                 "Strictly wrap each question and answer pair in these tags:\n"
                 "<Question> [Text + Options if MCQ] </Question>\n"
                 "<Answer> [Correct Answer + 1-sentence logic based on the Source Material] </Answer>"
+            )
+            model_name = BASE_DIR / os.getenv("PARAM1_7B_RELATIVE_PATH")
+            print(model_name)
+            tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False, trust_remote_code=False)
+            model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                trust_remote_code=True,
+                torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.bfloat32,
+                device_map="auto"
             )
             inputs = tokenizer(prompt_rag, return_tensors="pt").to(model.device)
             with torch.no_grad():
