@@ -182,7 +182,9 @@ import NCERT_RAG_PIPE.main as ncert_rag
 
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
-
+print(f"Is CUDA available? {torch.cuda.is_available()}")
+print(f"Current device: {torch.cuda.current_device()}")
+print(f"Device name: {torch.cuda.get_device_name(0)}")
 load_dotenv()
 app = FastAPI()
 BASE_DIR = Path(__file__).resolve().parent
@@ -294,22 +296,34 @@ async def ask_llm(req: QueryRequest):
     # Your requested prompt structure
     prompt = (
         "### ROLE\n"
-        "Act as an expert Academic Assessment Designer specializing in curriculum development.\n\n"
-        "### TASK\n"
-        f"Generate {req.num_questions} high-quality questions based on:\n"
-        f"- QUESTION TYPE: {req.qType}\n"
+        "Act as an expert Academic Assessment Designer specializing in NCERT/CBSE curriculum development. "
+        "Your goal is to create questions that move beyond simple memory and test true cognitive depth.\n\n"
+
+        "### COGNITIVE DEPTH CONTEXT (Bloom's Taxonomy x DOK)\n"
+        "You must adhere to the following definitions for the requested DEPTH:\n"
+        "- DOK 1 (Recall/Remember): Recall of a fact, term, or property. (e.g., Define, List, State)\n"
+        "- DOK 2 (Skills & Concepts/Understand & Apply): Use of information or conceptual knowledge. (e.g., Describe, Classify, Solve routine problems)\n"
+        "- DOK 3 (Strategic Thinking/Analyze & Evaluate): Reasoning, planning, and using evidence. (e.g., Explain why, Non-routine problem solving, Compare/Contrast phenomena)\n"
+        "- DOK 4 (Extended Thinking/Create): Complex synthesis and connection across chapters. (e.g., Create a model, Design an experiment, Critique a theoretical framework)\n\n"
+
+        "### PARAMETERS\n"
         f"- SUBJECT: {req.subject}\n"
         f"- CHAPTER: {req.chapter}\n"
         f"- TOPIC: {req.topic}\n"
-        f"- DEPTH: {req.depth}\n\n"
+        f"- QUESTION TYPE: {req.qType}\n"
+        f"- TARGET DEPTH: {req.depth}\n"
+        f"- QUANTITY: {req.num_questions}\n\n"
+
         "### CONSTRAINTS\n"
-        "1. If depth is 'High' or 'Application', include a situational scenario.\n"
-        "2. Ensure distractors are plausible and logically related.\n"
-        "3. Use professional academic language.\n\n"
+        "1. Content must be strictly based on NCERT syllabus standards.\n"
+        "2. Distractors for MCQs must be 'Common Misconceptions'—they should look correct to a student who has not understood the core concept.\n"
+        "3. For numericals, provide a step-by-step logical breakdown in the Answer section.\n"
+        "4. Use LaTeX for all mathematical formulas and chemical equations (e.g., $E=mc^2$).\n\n"
+
         "### OUTPUT FORMAT\n"
-        "Strictly wrap the content in these tags for EACH question:\n"
-        "<Question> [Question text and options] </Question>\n"
-        "<Answer> [Correct answer] </Answer>"
+        "Generate each question in the following structure. Repeat this block for every question:\n"
+        "<Question>\n[Question text here. If MCQ, include options A, B, C, D]\n</Question>\n"
+        "<Answer>\n[Correct answer with a 2-sentence explanation of the underlying concept]\n</Answer>"
     )
 
     try:
@@ -332,7 +346,38 @@ async def ask_llm(req: QueryRequest):
         elif req.model_id == "rag-piped-llama":
             topic_chunk, theme_chunk = ncert_rag.main(req.chapter, req.topic)
             # RAG-Specific Prompt (for rag-piped-llama)
-            prompt_rag = f"### RAG CONTEXT:\n{topic_chunk}\n\n### TASK: Generate {req.qType} for {req.topic} using context. DOK: {req.depth}. OUTPUT: <Question>...</Question><Answer>...</Answer>"
+            prompt_rag = (
+                "### ROLE\n"
+                "Act as an expert NCERT Assessment Designer. Your task is to use the provided 'Source Material' "
+                "to generate high-quality questions. You must strictly adhere to the requested Cognitive Depth.\n\n"
+
+                "### SOURCE MATERIAL (RAG CONTEXT)\n"
+                f"{topic_chunk}\n\n"
+
+                "### COGNITIVE DEPTH FRAMEWORK (Bloom's x DOK)\n"
+                "If the source material is simple, you must still elevate the question to meet these levels:\n"
+                "- DOK 1 (Recall): Direct facts from the text. (e.g., 'What is...', 'Define...')\n"
+                "- DOK 2 (Understand/Apply): Interpreting the text. (e.g., 'How does X affect Y?', 'Classify...')\n"
+                "- DOK 3 (Analyze/Evaluate): Using the text to solve non-routine problems. (e.g., 'What would happen if...', 'Justify...')\n"
+                "- DOK 4 (Create/Synthesis): Connecting this text to broader scientific/mathematical principles.\n\n"
+
+                "### SESSION PARAMETERS\n"
+                f"- SUBJECT: {req.subject}\n"
+                f"- CHAPTER: {req.chapter}\n"
+                f"- TOPIC: {req.topic}\n"
+                f"- QUESTION TYPE: {req.qType}\n"
+                f"- REQUIRED DEPTH: {req.depth}\n\n"
+
+                "### INSTRUCTIONS\n"
+                "1. Use the Source Material for factual accuracy. Do not hallucinate outside NCERT bounds.\n"
+                "2. THE DEPTH IS PARAMOUNT: If the depth is DOK 3, do not provide a DOK 1 recall question even if the text is short.\n"
+                "3. Use LaTeX for all technical notation (e.g., $H_2O$, $\sin(\theta)$).\n\n"
+
+                "### OUTPUT FORMAT\n"
+                "Strictly wrap each question and answer pair in these tags:\n"
+                "<Question> [Text + Options if MCQ] </Question>\n"
+                "<Answer> [Correct Answer + 1-sentence logic based on the Source Material] </Answer>"
+            )
             response = ollama.chat(model='llama3', messages=[{'role': 'user', 'content': prompt_rag}])
             raw_output = response['message']['content']
         elif req.model_id == "param.1:7b":
@@ -361,7 +406,38 @@ async def ask_llm(req: QueryRequest):
         elif req.model_id == "rag-piped-param":
             topic_chunk, theme_chunk = ncert_rag.main(req.chapter, req.topic)
             # RAG-Specific Prompt (for rag-piped-param)
-            prompt_rag = f"### RAG CONTEXT:\n{topic_chunk}\n\n### TASK: Generate {req.qType} for {req.topic} using context. DOK: {req.depth}. OUTPUT: <Question>...</Question><Answer>...</Answer>"
+            prompt_rag = (
+                "### ROLE\n"
+                "Act as an expert NCERT Assessment Designer. Your task is to use the provided 'Source Material' "
+                "to generate high-quality questions. You must strictly adhere to the requested Cognitive Depth.\n\n"
+
+                "### SOURCE MATERIAL (RAG CONTEXT)\n"
+                f"{topic_chunk}\n\n"
+
+                "### COGNITIVE DEPTH FRAMEWORK (Bloom's x DOK)\n"
+                "If the source material is simple, you must still elevate the question to meet these levels:\n"
+                "- DOK 1 (Recall): Direct facts from the text. (e.g., 'What is...', 'Define...')\n"
+                "- DOK 2 (Understand/Apply): Interpreting the text. (e.g., 'How does X affect Y?', 'Classify...')\n"
+                "- DOK 3 (Analyze/Evaluate): Using the text to solve non-routine problems. (e.g., 'What would happen if...', 'Justify...')\n"
+                "- DOK 4 (Create/Synthesis): Connecting this text to broader scientific/mathematical principles.\n\n"
+
+                "### SESSION PARAMETERS\n"
+                f"- SUBJECT: {req.subject}\n"
+                f"- CHAPTER: {req.chapter}\n"
+                f"- TOPIC: {req.topic}\n"
+                f"- QUESTION TYPE: {req.qType}\n"
+                f"- REQUIRED DEPTH: {req.depth}\n\n"
+
+                "### INSTRUCTIONS\n"
+                "1. Use the Source Material for factual accuracy. Do not hallucinate outside NCERT bounds.\n"
+                "2. THE DEPTH IS PARAMOUNT: If the depth is DOK 3, do not provide a DOK 1 recall question even if the text is short.\n"
+                "3. Use LaTeX for all technical notation (e.g., $H_2O$, $\sin(\theta)$).\n\n"
+
+                "### OUTPUT FORMAT\n"
+                "Strictly wrap each question and answer pair in these tags:\n"
+                "<Question> [Text + Options if MCQ] </Question>\n"
+                "<Answer> [Correct Answer + 1-sentence logic based on the Source Material] </Answer>"
+            )
             inputs = tokenizer(prompt_rag, return_tensors="pt").to(model.device)
             with torch.no_grad():
                 output = model.generate(
