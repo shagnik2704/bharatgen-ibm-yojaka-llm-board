@@ -264,30 +264,39 @@ class QueryRequest(BaseModel):
     qType: str
     num_questions: int # Added this field
 
+import re
+
 def parse_ai_output(raw_text):
     if not raw_text:
         return []
 
-    # Regex explanation:
-    # (?i) makes it case-insensitive
-    # <question> matches the opening tag
-    # (.*?) non-greedily captures everything until...
-    # </question> the closing tag
-    q_pattern = re.compile(r'<(?:[Qq]uestion)>(.*?)</(?:[Qq]uestion)>', re.DOTALL)
-    a_pattern = re.compile(r'<(?:[Aa]nswer)>(.*?)</(?:[Aa]nswer)>', re.DOTALL)
+    # This regex looks for <Question> and captures everything until 
+    # it hits another <Question>, an <Answer>, or the end of the string ($).
+    # It ignores whether a </Question> exists or not.
+    q_pattern = r'<(?:[Qq]uestion)>(.*?)(?=<[Qq]uestion>|<[Aa]nswer>|$)'
+    a_pattern = r'<(?:[Aa]nswer)>(.*?)(?=<[Qq]uestion>|<[Aa]nswer>|$)'
 
-    questions = q_pattern.findall(raw_text)
-    answers = a_pattern.findall(raw_text)
+    questions = re.findall(q_pattern, raw_text, re.DOTALL)
+    answers = re.findall(a_pattern, raw_text, re.DOTALL)
 
     results = []
+    
+    # We loop based on the number of questions found
     for i in range(len(questions)):
-        # Clean up any leftover markdown headers the AI might have snuck inside the tags
-        clean_q = re.sub(r'(\*\*Question \d+\*\*|Question \d+:)', '', questions[i]).strip()
-        clean_a = re.sub(r'(\*\*Answer\*\*|Answer:)', '', answers[i]).strip() if i < len(answers) else "No answer provided."
+        q_raw = questions[i]
+        a_raw = answers[i] if i < len(answers) else "No answer provided."
+
+        # CLEANUP: Remove any stray closing tags the AI might have actually included
+        q_clean = re.sub(r'</?[Qq]uestion/?>', '', q_raw).strip()
+        a_clean = re.sub(r'</?[Aa]nswer/?>', '', a_raw).strip()
+
+        # CLEANUP: Remove AI artifacts like "**Question 1**" or "Note:"
+        q_clean = re.sub(r'(?i)(\*\*Question\s*\d+\*\*|Question\s*\d+:|###.*?\n)', '', q_clean).strip()
+        a_clean = re.sub(r'(?i)(\*\*Answer\*\*|Answer:|Note:.*$)', '', a_clean).strip()
 
         results.append({
-            "question": clean_q,
-            "answer": clean_a
+            "question": q_clean,
+            "answer": a_clean
         })
 
     return results
@@ -379,7 +388,7 @@ async def ask_llm(req: QueryRequest):
                 "2. THE DEPTH IS PARAMOUNT: If the depth is DOK 3, do not provide a DOK 1 recall question even if the text is short.\n"
                 "3. Use LaTeX for all technical notation (e.g., $H_2O$, $\sin(\theta)$).\n\n"
 
-                "### OUTPUT FORMAT\n"
+                "### OUTPUT FORMAT (FOLLOW EXACTLY)\n"
                 "Strictly wrap each question and answer pair in these tags:\n"
                 "<Question> [Text + Options if MCQ] </Question>\n"
                 "<Answer> [Correct Answer + 1-sentence logic based on the Source Material] </Answer>"
@@ -439,7 +448,7 @@ async def ask_llm(req: QueryRequest):
                 "2. THE DEPTH IS PARAMOUNT: If the depth is DOK 3, do not provide a DOK 1 recall question even if the text is short.\n"
                 "3. Use LaTeX for all technical notation (e.g., $H_2O$, $\sin(\theta)$).\n\n"
 
-                "### OUTPUT FORMAT\n"
+                "### OUTPUT FORMAT (FOLLOW EXACTLY)\n"
                 "Strictly wrap each question and answer pair in these tags:\n"
                 "<Question> [Text + Options if MCQ] </Question>\n"
                 "<Answer> [Correct Answer + 1-sentence logic based on the Source Material] </Answer>"
