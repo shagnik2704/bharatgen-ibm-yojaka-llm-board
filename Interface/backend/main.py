@@ -337,6 +337,7 @@ async def ask_llm(req: QueryRequest):
             raw_output = response['message']['content']
         elif req.model_id == "param.1:7b":
             model_name = BASE_DIR / os.getenv("PARAM1_7B_RELATIVE_PATH")
+            print(model_name)
             tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=False)
             model = AutoModelForCausalLM.from_pretrained(
                 model_name,
