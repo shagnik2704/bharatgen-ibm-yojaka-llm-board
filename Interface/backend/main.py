@@ -419,6 +419,14 @@ async def ask_llm(req: QueryRequest):
             response = ollama.chat(model='llama3', messages=[{'role': 'user', 'content': prompt_rag}])
             raw_output = response['message']['content']
         elif req.model_id == "param.1:7b":
+            
+            prompt = (f"Please generate {req.num_questions} high-quality {req.subject} NCERT assessment {req.qType} questions from the chapter of {req.chapter} on the topic of {req.topic} in the  level {req.depth}"
+                      "For depth use Blooms Taxonomy"
+                      "Level 1 means Remembering, Level 2 means Understanding and Applying, Level 3 means Analyzing, Level 4 means Evaluating and Creating"
+                "### OUTPUT FORMAT (FOLLOW EXACTLY)\n"
+                "Strictly wrap each question and answer pair in these tags:\n"
+                "<Question> [Text + Options if MCQ] </Question>\n"
+                "<Answer> [Correct Answer + 1-sentence logic based on the Source Material] </Answer>")
             inputs = tokenizer(prompt, return_tensors="pt", return_token_type_ids=False).to(model.device)
 
             with torch.no_grad():
