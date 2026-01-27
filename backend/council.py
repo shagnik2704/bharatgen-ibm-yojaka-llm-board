@@ -7,7 +7,7 @@ from typing import List, Dict, Optional, Tuple
 from model_runner import run_model, needs_rag, get_rag_context
 
 
-def build_chairman_proposal_prompt(subject: str, chapter: str, topic: str, qType: str, 
+def build_chairman_proposal_prompt(subject: str, chapter: str, theme: str, qType: str, 
                                    depth: str, num_questions: int, topic_chunk: str = None, 
                                    theme_chunk: str = None) -> str:
     """Build the prompt for the chairman's initial proposal."""
@@ -33,7 +33,7 @@ def build_chairman_proposal_prompt(subject: str, chapter: str, topic: str, qType
         "### PARAMETERS\n"
         f"- SUBJECT: {subject}\n"
         f"- CHAPTER: {chapter}\n"
-        f"- TOPIC: {topic}\n"
+        f"- THEME: {theme}\n"
         f"- QUESTION TYPE: {qType}\n"
         f"- TARGET DEPTH: {depth}\n"
         f"- QUANTITY: {num_questions}\n"
@@ -53,7 +53,7 @@ def build_chairman_proposal_prompt(subject: str, chapter: str, topic: str, qType
     return prompt
 
 
-def build_member_review_prompt(subject: str, chapter: str, topic: str, qType: str, 
+def build_member_review_prompt(subject: str, chapter: str, theme: str, qType: str, 
                                 depth: str, chairman_proposal: str, member_letter: str,
                                 topic_chunk: str = None, theme_chunk: str = None) -> str:
     """Build the prompt for a board member to review the chairman's proposal."""
@@ -72,7 +72,7 @@ def build_member_review_prompt(subject: str, chapter: str, topic: str, qType: st
         "### CONTEXT\n"
         f"- SUBJECT: {subject}\n"
         f"- CHAPTER: {chapter}\n"
-        f"- TOPIC: {topic}\n"
+        f"- THEME: {theme}\n"
         f"- QUESTION TYPE: {qType}\n"
         f"- TARGET DEPTH: {depth}\n"
         f"{rag_context}"
@@ -100,7 +100,7 @@ def build_member_review_prompt(subject: str, chapter: str, topic: str, qType: st
     return prompt
 
 
-def build_chairman_synthesis_prompt(subject: str, chapter: str, topic: str, qType: str,
+def build_chairman_synthesis_prompt(subject: str, chapter: str, theme: str, qType: str,
                                      depth: str, original_proposal: str, member_reviews: List[Dict],
                                      topic_chunk: str = None, theme_chunk: str = None) -> str:
     """Build the prompt for the chairman to synthesize final questions based on member feedback."""
@@ -129,7 +129,7 @@ def build_chairman_synthesis_prompt(subject: str, chapter: str, topic: str, qTyp
         "### CONTEXT\n"
         f"- SUBJECT: {subject}\n"
         f"- CHAPTER: {chapter}\n"
-        f"- TOPIC: {topic}\n"
+        f"- THEME: {theme}\n"
         f"- QUESTION TYPE: {qType}\n"
         f"- TARGET DEPTH: {depth}\n"
         f"{rag_context}"
@@ -184,7 +184,7 @@ def parse_member_review(raw_output: str) -> Dict:
 
 
 async def run_council_flow(chairman_model_id: str, member_model_ids: List[str],
-                          subject: str, chapter: str, topic: str, qType: str,
+                          subject: str, chapter: str, theme: str, qType: str,
                           depth: str, num_questions: int) -> Dict:
     """
     Execute the three-stage council flow for question generation.
@@ -206,14 +206,14 @@ async def run_council_flow(chairman_model_id: str, member_model_ids: List[str],
         loop = asyncio.get_event_loop()
         topic_chunk, theme_chunk = await loop.run_in_executor(
             None,
-            lambda: get_rag_context(chapter, topic)
+            lambda: get_rag_context(chapter, theme)
         )
     
     context_chunks = (topic_chunk, theme_chunk) if topic_chunk and theme_chunk else None
     
     # Stage 1: Chairman proposal
     chairman_prompt = build_chairman_proposal_prompt(
-        subject, chapter, topic, qType, depth, num_questions, topic_chunk, theme_chunk
+        subject, chapter, theme, qType, depth, num_questions, topic_chunk, theme_chunk
     )
     
     # Build RAG prompt for RAG models
@@ -237,7 +237,7 @@ async def run_council_flow(chairman_model_id: str, member_model_ids: List[str],
             "### SESSION PARAMETERS\n"
             f"- SUBJECT: {subject}\n"
             f"- CHAPTER: {chapter}\n"
-            f"- TOPIC: {topic}\n"
+            f"- THEME: {theme}\n"
             f"- QUESTION TYPE: {qType}\n"
             f"- REQUIRED DEPTH: {depth}\n"
             f"- QUANTITY: {num_questions}\n\n"
@@ -260,7 +260,7 @@ async def run_council_flow(chairman_model_id: str, member_model_ids: List[str],
     for i, member_id in enumerate(member_model_ids):
         member_letter = chr(65 + i)  # A, B, C, etc.
         member_prompt = build_member_review_prompt(
-            subject, chapter, topic, qType, depth, chairman_output, member_letter,
+            subject, chapter, theme, qType, depth, chairman_output, member_letter,
             topic_chunk, theme_chunk
         )
         
@@ -278,7 +278,7 @@ async def run_council_flow(chairman_model_id: str, member_model_ids: List[str],
                 "### CONTEXT\n"
                 f"- SUBJECT: {subject}\n"
                 f"- CHAPTER: {chapter}\n"
-                f"- TOPIC: {topic}\n"
+                f"- THEME: {theme}\n"
                 f"- QUESTION TYPE: {qType}\n"
                 f"- TARGET DEPTH: {depth}\n\n"
                 
@@ -310,7 +310,7 @@ async def run_council_flow(chairman_model_id: str, member_model_ids: List[str],
     
     # Stage 3: Chairman synthesis
     synthesis_prompt = build_chairman_synthesis_prompt(
-        subject, chapter, topic, qType, depth, chairman_output, member_opinions,
+        subject, chapter, theme, qType, depth, chairman_output, member_opinions,
         topic_chunk, theme_chunk
     )
     
@@ -327,7 +327,7 @@ async def run_council_flow(chairman_model_id: str, member_model_ids: List[str],
             "### CONTEXT\n"
             f"- SUBJECT: {subject}\n"
             f"- CHAPTER: {chapter}\n"
-            f"- TOPIC: {topic}\n"
+            f"- THEME: {theme}\n"
             f"- QUESTION TYPE: {qType}\n"
             f"- TARGET DEPTH: {depth}\n\n"
             

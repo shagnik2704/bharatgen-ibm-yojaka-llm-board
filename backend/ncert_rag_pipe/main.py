@@ -14,13 +14,18 @@ CHUNKS_PATH = os.path.join(INDEXES_DIR, "chunks_metadata.pkl")
 MODEL_NAME = "all-MiniLM-L6-v2"
 DEFAULT_K = 1
 
+# Global RAG retriever instance (cached to avoid reloading on every call)
+_rag_retriever = None
+
 class RAGRetriever:
     def __init__(self):
         # Load the model and the pre-built vector database
+        print("Loading RAG retriever (this happens once)...")
         self.model = SentenceTransformer(MODEL_NAME)
         self.index = faiss.read_index(INDEX_PATH)
         with open(CHUNKS_PATH, "rb") as f:
             self.chunks = pickle.load(f)
+        print("RAG retriever loaded successfully!")
 
     def get_context(self, query, k=DEFAULT_K):
         """
@@ -41,8 +46,15 @@ class RAGRetriever:
         
         return "\n\n".join(retrieved_texts), best_score
 
+def get_retriever():
+    """Get or create the global RAG retriever instance (singleton pattern)."""
+    global _rag_retriever
+    if _rag_retriever is None:
+        _rag_retriever = RAGRetriever()
+    return _rag_retriever
+
 def main(topic_input, theme_input):
-    retriever = RAGRetriever()
+    retriever = get_retriever()
 
     # 2. Retrieval
     topic_chunk, t_score = retriever.get_context(topic_input)

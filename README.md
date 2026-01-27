@@ -55,8 +55,8 @@ OPENAI_API_KEY=your_openai_key_here
 # Path to frontend (relative to backend/)
 FRONTEND_RELATIVE_PATH=../frontend/index.html
 
-# Path to local HF model (relative to backend/ or absolute)
-PARAM1_7B_RELATIVE_PATH=../transformer/models/param1-7b
+# Path to Param-1-7B-MoE model (absolute or relative path)
+PARAM1_7B_MOE_PATH=/home/jashwanth/Param-1-7B-MoE
 ```
 
 ## Running the Application
@@ -85,20 +85,32 @@ This will:
 
 ## Available Models
 
+### Cloud Models
 - `gemini` - Google Gemini 3 Flash
 - `chatgpt` - OpenAI GPT-4o
-- `local-llama` - Local Llama 3 (via Ollama)
-- `qwen` - Qwen 2.5 (via Ollama)
-- `granite3.3:8b` - IBM Granite 3 (via Ollama)
+- `groq-llama-8b` - Groq Llama 3.1 8B Instant
+- `groq-llama-70b` - Groq Llama 3.3 70B Versatile
+- `groq-llama-guard` - Groq Llama Guard 4 12B
+- `groq-gpt-oss-120b` - Groq GPT OSS 120B
+- `groq-gpt-oss-20b` - Groq GPT OSS 20B
+
+### Local Models (via Ollama)
+- `local-llama` - Local Llama 3
+- `qwen` - Qwen 2.5
+- `granite3.3:8b` - IBM Granite 3
+
+### Param Models
+- `param-1-7b-moe` - Param 1 7B MoE model (requires PARAM1_7B_MOE_PATH)
+- `rag-piped-param-moe` - Param 1 7B MoE with RAG context
+
+### RAG-Enhanced Models
 - `rag-piped-llama` - Llama 3 with RAG context
-- `param.1:7b` - Local Param 1 7B model
-- `rag-piped-param` - Param 1 7B with RAG context
 
 ## Usage
 
 1. Select a subject (Math, Physics, Chemistry, Biology)
 2. Choose a chapter from the dropdown
-3. Enter a topic
+3. Select a theme (cricket, IPL, football, or Interstellar movie)
 4. Set cognitive depth level (DOK 1-4)
 5. Configure question distribution by type
 6. Click "GENERATE SESSION" to create questions

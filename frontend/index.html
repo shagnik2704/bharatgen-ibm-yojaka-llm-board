@@ -308,7 +308,7 @@
             class="text-sm leading-relaxed"
             style="color: var(--text-secondary);"
         >
-            Select a topic and generate questions to see the reference context here.
+            Select a theme and generate questions to see the reference context here.
         </div>
     </div>
 
@@ -351,8 +351,8 @@
                         <option value="qwen">Qwen 2.5</option>
                         <option value="granite3.3:8b">IBM Granite 3</option>
                         <option value="rag-piped-llama">RAG-Piped Llama</option>
-                        <option value="param.1:7b">Param 1 7B</option>
-                        <option value="rag-piped-param">RAG-Piped Param</option>
+                        <option value="param-1-7b-moe">Param 1 7B MoE</option>
+                        <option value="rag-piped-param-moe">RAG-Piped Param 7B MoE</option>
                     </select>
                 </div>
                 
@@ -417,12 +417,16 @@
                     >
                         <option value="">Select Subject First</option>
                     </select>
-                    <input 
-                        id="topic" 
-                        type="text" 
-                        placeholder="Topic Detail" 
+                    <select 
+                        id="themeDropdown" 
                         class="w-full rounded-2xl p-4 text-sm outline-none transition-all"
                     >
+                        <option value="">Select Theme</option>
+                        <option value="cricket">cricket</option>
+                        <option value="IPL">IPL</option>
+                        <option value="football">football</option>
+                        <option value="Interstellar movie">Interstellar movie</option>
+                    </select>
                 </div>
 
                 <div class="space-y-3">
@@ -695,8 +699,8 @@
             { id: "qwen", name: "Qwen 2.5" },
             { id: "granite3.3:8b", name: "IBM Granite 3" },
             { id: "rag-piped-llama", name: "RAG-Piped Llama" },
-            { id: "param.1:7b", name: "Param 1 7B" },
-            { id: "rag-piped-param", name: "RAG-Piped Param" }
+            { id: "param-1-7b-moe", name: "Param 1 7B MoE" },
+            { id: "rag-piped-param-moe", name: "RAG-Piped Param 7B MoE" }
         ];
         
         // Initialize member checkboxes
@@ -828,11 +832,11 @@
 
         async function startSession() {
             const btn = document.getElementById('genBtn');
-            const topic = document.getElementById('topic').value;
+            const theme = document.getElementById('themeDropdown').value;
             const chapter = document.getElementById('chapterDropdown').value;
             const shuffle = document.getElementById('shuffleToggle').checked;
 
-            if(!activeSubject || !topic || !chapter) return alert("Select Subject, Chapter & Topic");
+            if(!activeSubject || !theme || !chapter) return alert("Select Subject, Chapter & Theme");
 
             const typeRequests = [];
             document.querySelectorAll('.q-type-count').forEach(input => {
@@ -850,7 +854,7 @@
 
             // Prepare the sidebar content
             document.getElementById('sidebarContent').innerHTML = `
-                <p class='mb-2 font-bold' style="color: var(--text-primary);">Topic: ${topic}</p>
+                <p class='mb-2 font-bold' style="color: var(--text-primary);">Theme: ${theme}</p>
                 <p style="color: var(--text-secondary);">Retrieving reference chunks from NCERT ${activeSubject} Chapter: ${chapter}...</p>
                 <p class='mt-4 text-xs opacity-70' style="color: var(--text-muted);">Note: To see the full chunk, the backend return must include the 'topic_chunk' variable.</p>
             `;
@@ -870,7 +874,7 @@
                             depth: activeDepth,
                             subject: activeSubject,
                             chapter: chapter,
-                            topic: topic,
+                            theme: theme,
                             qType: req.type,
                             num_questions: req.count
                         })

@@ -231,40 +231,41 @@ except ImportError:
     print("Warning: Groq library not installed. Install with: pip install groq")
     groq_client = None
 
-# Initialize Param model (handle missing path gracefully)
-param_model_path = os.getenv("PARAM1_7B_RELATIVE_PATH")
-tokenizer = None
-model = None
-
-if param_model_path:
-    model_name = BASE_DIR / param_model_path
-    print(f"Param model path: {model_name}")
-    if model_name.exists():
+# Initialize Param-1-7B-MoE from local path
+tokenizer_moe = None
+model_moe = None
+param_moe_path = os.getenv("PARAM1_7B_MOE_PATH")
+if param_moe_path:
+    from pathlib import Path
+    model_path = Path(param_moe_path)
+    print(f"Param-1-7B-MoE model path: {model_path}")
+    if model_path.exists():
         try:
-            tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=False)
+            tokenizer_moe = AutoTokenizer.from_pretrained(str(model_path), trust_remote_code=False)
             quant_config = BitsAndBytesConfig(
                 load_in_4bit=True,
                 bnb_4bit_compute_dtype=torch.bfloat16,
                 bnb_4bit_quant_type="nf4"
             )
-            model = AutoModelForCausalLM.from_pretrained(
-                model_name,
+            model_moe = AutoModelForCausalLM.from_pretrained(
+                str(model_path),
                 quantization_config=quant_config,
                 device_map="auto",
                 trust_remote_code=True
             )
+            print("Successfully loaded Param-1-7B-MoE")
         except Exception as e:
-            print(f"Warning: Failed to initialize Param model: {e}")
-            tokenizer = None
-            model = None
+            print(f"Warning: Failed to initialize Param-1-7B-MoE: {e}")
+            tokenizer_moe = None
+            model_moe = None
     else:
-        print(f"Warning: Param model path does not exist: {model_name}")
+        print(f"Warning: Param-1-7B-MoE path does not exist: {model_path}")
 else:
-    print("Warning: PARAM1_7B_RELATIVE_PATH not set, Param model will not be available")
+    print("Info: Param-1-7B-MoE not configured. Set PARAM1_7B_MOE_PATH to enable.")
 
 # Share clients with model_runner
 from model_runner import set_clients
-set_clients(gemini_client=gemini_client, openai_client=openai_client, groq_client=groq_client, tokenizer=tokenizer, model=model)
+set_clients(gemini_client=gemini_client, openai_client=openai_client, groq_client=groq_client, tokenizer_moe=tokenizer_moe, model_moe=model_moe)
 
 
 
@@ -340,7 +341,7 @@ class QueryRequest(BaseModel):
     depth: str
     subject: str
     chapter: str
-    topic: str
+    theme: str
     qType: str
     num_questions: int
     # Board configuration (required for new flow)
@@ -350,16 +351,30 @@ import re
 
 def parse_ai_output(raw_text):
     if not raw_text:
+        print("[DEBUG] parse_ai_output: raw_text is empty")
         return []
 
-    # This regex looks for <Question> and captures everything until 
-    # it hits another <Question>, an <Answer>, or the end of the string ($).
-    # It ignores whether a </Question> exists or not.
-    q_pattern = r'<(?:[Qq]uestion)>(.*?)(?=<[Qq]uestion>|<[Aa]nswer>|$)'
-    a_pattern = r'<(?:[Aa]nswer)>(.*?)(?=<[Qq]uestion>|<[Aa]nswer>|$)'
+    print(f"[DEBUG] parse_ai_output: Input length: {len(raw_text)} characters")
+    print(f"[DEBUG] parse_ai_output: First 500 chars: {raw_text[:500]}")
 
-    questions = re.findall(q_pattern, raw_text, re.DOTALL)
-    answers = re.findall(a_pattern, raw_text, re.DOTALL)
+    # More lenient patterns - try multiple variations
+    # Pattern 1: Standard <Question>...</Question> format
+    q_pattern1 = r'<(?:[Qq]uestion)>(.*?)(?:</[Qq]uestion>|(?=<[Qq]uestion>|<[Aa]nswer>|$))'
+    a_pattern1 = r'<(?:[Aa]nswer)>(.*?)(?:</[Aa]nswer>|(?=<[Qq]uestion>|<[Aa]nswer>|$))'
+    
+    # Pattern 2: Without closing tags
+    q_pattern2 = r'<(?:[Qq]uestion)>(.*?)(?=<[Qq]uestion>|<[Aa]nswer>|$)'
+    a_pattern2 = r'<(?:[Aa]nswer)>(.*?)(?=<[Qq]uestion>|<[Aa]nswer>|$)'
+
+    questions = re.findall(q_pattern1, raw_text, re.DOTALL)
+    answers = re.findall(a_pattern1, raw_text, re.DOTALL)
+    
+    # If no matches, try pattern 2
+    if not questions:
+        questions = re.findall(q_pattern2, raw_text, re.DOTALL)
+        answers = re.findall(a_pattern2, raw_text, re.DOTALL)
+    
+    print(f"[DEBUG] parse_ai_output: Found {len(questions)} questions, {len(answers)} answers")
 
     results = []
     
@@ -376,11 +391,13 @@ def parse_ai_output(raw_text):
         q_clean = re.sub(r'(?i)(\*\*Question\s*\d+\*\*|Question\s*\d+:|###.*?\n)', '', q_clean).strip()
         a_clean = re.sub(r'(?i)(\*\*Answer\*\*|Answer:|Note:.*$)', '', a_clean).strip()
 
-        results.append({
-            "question": q_clean,
-            "answer": a_clean
-        })
+        if q_clean:  # Only add if question is not empty
+            results.append({
+                "question": q_clean,
+                "answer": a_clean
+            })
 
+    print(f"[DEBUG] parse_ai_output: Returning {len(results)} parsed results")
     return results
 
 
@@ -415,7 +432,7 @@ async def ask_llm(req: QueryRequest):
                 member_model_ids=req.board.member_model_ids,
                 subject=req.subject,
                 chapter=req.chapter,
-                topic=req.topic,
+                theme=req.theme,
                 qType=req.qType,
                 depth=req.depth,
                 num_questions=req.num_questions
@@ -454,7 +471,7 @@ async def ask_llm(req: QueryRequest):
                 "### PARAMETERS\n"
                 f"- SUBJECT: {req.subject}\n"
                 f"- CHAPTER: {req.chapter}\n"
-                f"- TOPIC: {req.topic}\n"
+                f"- THEME: {req.theme}\n"
                 f"- QUESTION TYPE: {req.qType}\n"
                 f"- TARGET DEPTH: {req.depth}\n"
                 f"- QUANTITY: {req.num_questions}\n\n"
@@ -474,7 +491,14 @@ async def ask_llm(req: QueryRequest):
             # Check if RAG is needed
             context_chunks = None
             if needs_rag(req.model_id):
-                topic_chunk, theme_chunk = get_rag_context(req.chapter, req.topic)
+                topic_chunk, theme_chunk = get_rag_context(req.chapter, req.theme)
+                # More aggressive truncation - limit to ~800 chars each to keep total prompt manageable
+                max_chunk_length = 800
+                if len(topic_chunk) > max_chunk_length:
+                    topic_chunk = topic_chunk[:max_chunk_length] + "... [truncated]"
+                if len(theme_chunk) > max_chunk_length:
+                    theme_chunk = theme_chunk[:max_chunk_length] + "... [truncated]"
+                print(f"[DEBUG] RAG chunks truncated - topic: {len(topic_chunk)}, theme: {len(theme_chunk)}")
                 context_chunks = (topic_chunk, theme_chunk)
                 # Use RAG-specific prompt
                 prompt = (
@@ -495,7 +519,7 @@ async def ask_llm(req: QueryRequest):
                     "### SESSION PARAMETERS\n"
                     f"- SUBJECT: {req.subject}\n"
                     f"- CHAPTER: {req.chapter}\n"
-                    f"- TOPIC: {req.topic}\n"
+                    f"- THEME: {req.theme}\n"
                     f"- QUESTION TYPE: {req.qType}\n"
                     f"- REQUIRED DEPTH: {req.depth}\n"
                     f"- QUANTITY: {req.num_questions}\n\n"
