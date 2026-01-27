@@ -265,7 +265,7 @@
                     Active Engine
                 </span>
                 <span id="currentModelLabel" class="text-sm font-medium" style="color: var(--text-secondary);">
-                    Gemini 3 Flash
+                    Groq Llama 3.3 70B Versatile
                 </span>
             </div>
             <button 
@@ -340,19 +340,21 @@
                         class="w-full rounded-xl p-4 text-sm outline-none transition-all"
                         style="background: var(--bg-secondary); border: 1px solid var(--card-border); color: var(--text-primary);"
                     >
-                        <option value="gemini">Google Gemini 3</option>
-                        <option value="chatgpt">OpenAI GPT-4o</option>
+                        <!-- Temporarily disabled: non-Groq options -->
+                        <!-- <option value="gemini">Google Gemini 3</option> -->
+                        <!-- <option value="chatgpt">OpenAI GPT-4o</option> -->
                         <option value="groq-llama-8b">Groq Llama 3.1 8B Instant</option>
                         <option value="groq-llama-70b">Groq Llama 3.3 70B Versatile</option>
                         <option value="groq-llama-guard">Groq Llama Guard 4 12B</option>
                         <option value="groq-gpt-oss-120b">Groq GPT OSS 120B</option>
                         <option value="groq-gpt-oss-20b">Groq GPT OSS 20B</option>
-                        <option value="local-llama">Local Llama 3</option>
-                        <option value="qwen">Qwen 2.5</option>
-                        <option value="granite3.3:8b">IBM Granite 3</option>
-                        <option value="rag-piped-llama">RAG-Piped Llama</option>
-                        <option value="param-1-7b-moe">Param 1 7B MoE</option>
-                        <option value="rag-piped-param-moe">RAG-Piped Param 7B MoE</option>
+                        <!-- Temporarily disabled: non-Groq options -->
+                        <!-- <option value="local-llama">Local Llama 3</option> -->
+                        <!-- <option value="qwen">Qwen 2.5</option> -->
+                        <!-- <option value="granite3.3:8b">IBM Granite 3</option> -->
+                        <!-- <option value="rag-piped-llama">RAG-Piped Llama</option> -->
+                        <!-- <option value="param-1-7b-moe">Param 1 7B MoE</option> -->
+                        <!-- <option value="rag-piped-param-moe">RAG-Piped Param 7B MoE</option> -->
                     </select>
                 </div>
                 
@@ -684,23 +686,26 @@
         let cursor = 0;
         let activeSubject = "";
         let activeDepth = "DOK level 1: Recall & Reproduction";
-        let currentChairman = "gemini";
-        let currentMembers = ["chatgpt", "local-llama"];
+        let currentChairman = "groq-llama-70b"; // Temporarily set to Groq default
+        let currentMembers = ["groq-llama-8b"]; // Temporarily set to Groq default
         
+        // Temporarily filtered to only Groq models
         const availableModels = [
-            { id: "gemini", name: "Google Gemini 3" },
-            { id: "chatgpt", name: "OpenAI GPT-4o" },
+            // Temporarily disabled: non-Groq options
+            // { id: "gemini", name: "Google Gemini 3" },
+            // { id: "chatgpt", name: "OpenAI GPT-4o" },
             { id: "groq-llama-8b", name: "Groq Llama 3.1 8B Instant" },
             { id: "groq-llama-70b", name: "Groq Llama 3.3 70B Versatile" },
             { id: "groq-llama-guard", name: "Groq Llama Guard 4 12B" },
             { id: "groq-gpt-oss-120b", name: "Groq GPT OSS 120B" },
             { id: "groq-gpt-oss-20b", name: "Groq GPT OSS 20B" },
-            { id: "local-llama", name: "Local Llama 3" },
-            { id: "qwen", name: "Qwen 2.5" },
-            { id: "granite3.3:8b", name: "IBM Granite 3" },
-            { id: "rag-piped-llama", name: "RAG-Piped Llama" },
-            { id: "param-1-7b-moe", name: "Param 1 7B MoE" },
-            { id: "rag-piped-param-moe", name: "RAG-Piped Param 7B MoE" }
+            // Temporarily disabled: non-Groq options
+            // { id: "local-llama", name: "Local Llama 3" },
+            // { id: "qwen", name: "Qwen 2.5" },
+            // { id: "granite3.3:8b", name: "IBM Granite 3" },
+            // { id: "rag-piped-llama", name: "RAG-Piped Llama" },
+            // { id: "param-1-7b-moe", name: "Param 1 7B MoE" },
+            // { id: "rag-piped-param-moe", name: "RAG-Piped Param 7B MoE" }
         ];
         
         // Initialize member checkboxes

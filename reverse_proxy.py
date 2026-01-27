@@ -13,6 +13,7 @@ SERVICES = {
     '/sanskrit': 'localhost:10008',
     '/spokentutorial': 'localhost:5000',
     '/llmboard': 'localhost:8002',
+    '/kef': 'localhost:8003',
 }
 
 class ProxyHandler(BaseHTTPRequestHandler):
