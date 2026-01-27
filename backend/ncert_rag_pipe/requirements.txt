@@ -1,0 +1,28 @@
+# --- Web & Environment ---
+fastapi
+uvicorn
+pydantic
+python-dotenv
+
+# --- AI Clients (Cloud) ---
+google-genai
+openai
+ollama
+
+# --- Local LLM & Transformers ---
+transformers>=4.40.0
+torch
+accelerate
+bitsandbytes
+sentence-transformers
+
+# --- RAG & Data Ingestion ---
+langchain
+langchain-community
+langchain-huggingface
+pypdf
+faiss-cpu
+pickle5  # Useful for older python versions, otherwise standard pickle works
+
+# --- Utilities ---
+pathlib
