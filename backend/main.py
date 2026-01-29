@@ -167,7 +167,7 @@
 #     except Exception as e:
 #         raise HTTPException(status_code=500, detail=str(e))
 
-
+from GEval import GEval
 import os
 import re
 import traceback
@@ -177,7 +177,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from pathlib import Path
-from google import genai
+import google.generativeai as genai
 from openai import OpenAI
 from dotenv import load_dotenv
 import ncert_rag_pipe.main as ncert_rag
@@ -254,7 +254,10 @@ except Exception as e:
     print(f"Warning: Failed to initialize Param-1-2.9B-Instruct: {e}")
     tokenizer_29 = None
     model_29 = None
-
+GEval_evaluator = GEval(
+    groq_api_key=groq_api_key,  
+    likert_scale=[1, 2, 3, 4, 5]  # or [1..7]
+)
 # Share clients with model_runner
 from model_runner import set_clients
 set_clients(gemini_client=gemini_client, openai_client=openai_client, groq_client=groq_client, tokenizer_29=tokenizer_29, model_29=model_29)
@@ -640,8 +643,36 @@ async def ask_llm(req: QueryRequest):
                     q["source_text"] = source_chunks
                 if source_meta:
                     q["source_meta"] = {"pdf_path": source_meta.get("source_path"), "page": source_meta.get("page")}
+                theme_score = GEval_evaluator.evaluate(
+                    task_description=f"You are to evaluate the thematic alignment of a question. The provided theme is {req.theme}.",
+                    evaluation_parameter="You to rate how well it is aligned on a scale of 1 to 5. A score of 1 indicates low alignemtn while a score of 5 indicates high alignment.",
+                    question=q['question'],
+                    answer=q['answer']
+                )
+
+                topic_score = GEval_evaluator.evaluate(
+                    task_description=f"You are to evaluate the topic alignment of a question. The provided topic is {req.chapter}.",
+                    evaluation_parameter="You to rate how well it is aligned on a scale of 1 to 5. A score of 1 indicates low alignemtn while a score of 5 indicates high alignment.",
+                    question=q['question'],
+                    answer=q['answer']
+                )
+
+                dok_score = GEval_evaluator.evaluate(
+                    task_description=f'''You are to evaluate the Depth of Knowledge alignment of a question. 
+                DOK 1: Recall & Reproduction
+                DOK 2: Skills & Concepts
+                DOK 3: Strategic Thinking
+                DOK 4: Extended Thinking
+
+                The provided dok level is {req.depth}.''',
+                    evaluation_parameter="You to rate how well it is aligned on a scale of 1 to 5. A score of 1 indicates low alignemtn while a score of 5 indicates high alignment.",
+                    question=q['question'],
+                    answer=q['answer']
+                )
+                q['alignment_score']=round((theme_score+topic_score+dok_score)/3,2)
             
             print(f"Council flow completed. Generated {len(questions)} questions.\n")
+            print(questions)
             return questions
         
         # Fallback to single model (backward compatibility)

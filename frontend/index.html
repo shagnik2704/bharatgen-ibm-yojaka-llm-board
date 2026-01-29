@@ -577,7 +577,13 @@
                     >
                         ...
                     </div>
-
+                    <div 
+                        id="ascoreContent" 
+                        class="glass-panel p-6 rounded-2xl space-y-4 max-h-48 overflow-y-auto custom-scroll"
+                        style="color: var(--text-secondary);"
+                    >
+                        Alignment Score :
+                    </div>
                     <div id="sourceTextSection" class="hidden space-y-3">
                         <button 
                             id="toggleSourceTextBtn" 
@@ -1028,7 +1034,7 @@
             document.getElementById('aContent').classList.add('hidden');
             document.getElementById('progressBar').innerText = `PROGRESS: ${cursor + 1} OF ${filteredQuestions.length}`;
             document.getElementById('revealBtn').innerText = "REVEAL STUDY LOGIC";
-            
+            renderAlignmentScore(q);
             // Source text and Explore
             const sourceTextSection = document.getElementById('sourceTextSection');
             const sourceTextContent = document.getElementById('sourceTextContent');
@@ -1060,7 +1066,62 @@
                 document.getElementById('boardOpinionsSection').classList.add('hidden');
             }
         }
-        
+        function scoreBar(percent) {
+            const color =
+                percent >= 4 ? 'bg-green-500' :
+                percent >= 2 ? 'bg-yellow-400' :
+                'bg-red-500';
+
+            return `
+                <div class="w-full bg-gray-200 rounded-full h-3 mt-2">
+                    <div class="${color} h-3 rounded-full transition-all"
+                        style="width:${percent}%"></div>
+                </div>
+                <div class="text-xs mt-1 font-semibold">${percent}%</div>
+            `;
+        }
+        function renderAlignmentScore(q) {
+            const container = document.getElementById('ascoreContent');
+
+            container.innerHTML = '<div class="text-xs font-bold uppercase tracking-widest">Alignment Score</div>';
+            console.log(q)
+            if (!q.alignment_score) {
+                container.innerHTML += `
+                    <div class="text-sm italic opacity-70">
+                        No alignment score available
+                    </div>
+                `;
+                return;
+            }
+
+            // Case 1: alignment_score is a number
+            if (typeof q.alignment_score === 'number') {
+                const pct = Math.round(q.alignment_score/5*100);
+                container.innerHTML += scoreBar(pct);
+                return;
+            }
+
+            // Case 2: alignment_score is an object
+            if (typeof q.alignment_score === 'object') {
+                const score = q.alignment_score.score ?? null;
+                const label = q.alignment_score.label ?? '';
+
+                if (score !== null) {
+                    const pct = Math.round(score * 100);
+                    container.innerHTML += `
+                        <div class="text-sm font-medium mb-2">${label}</div>
+                        ${scoreBar(pct)}
+                    `;
+                    return;
+                }
+            }
+
+            // Fallback
+            container.innerHTML += `
+                <div class="text-sm">${JSON.stringify(q.alignment_score)}</div>
+            `;
+        }
+
         function renderBoardOpinions(metadata) {
             const container = document.getElementById('boardOpinionsContent');
             container.innerHTML = '';
