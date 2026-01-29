@@ -162,6 +162,23 @@ async def run_model(model_id: str, prompt: str, context_chunks: tuple = None) ->
             )
         )
         return response.choices[0].message.content
+    elif model_id == "rag-piped-groq-70b":
+        # RAG-piped Groq 70B: same API, prompt already contains RAG context from council/main
+        if not GROQ_AVAILABLE:
+            raise ValueError("Groq library not installed. Please install it with: pip install groq")
+        if _groq_client is None:
+            raise ValueError("Groq client not initialized. Please set GROQ_API_KEY environment variable.")
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            None,
+            lambda: _groq_client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+                max_tokens=32768
+            )
+        )
+        return response.choices[0].message.content
     elif model_id == "groq-llama-guard":
         if not GROQ_AVAILABLE:
             raise ValueError("Groq library not installed. Please install it with: pip install groq")
@@ -297,7 +314,7 @@ async def run_model(model_id: str, prompt: str, context_chunks: tuple = None) ->
 
 def needs_rag(model_id: str) -> bool:
     """Check if a model requires RAG context."""
-    return model_id in ["rag-piped-llama", "rag-piped-param-instruct"]
+    return model_id in ["rag-piped-llama", "rag-piped-param-instruct", "rag-piped-groq-70b"]
 
 def get_rag_context(chapter: str, theme: str, language: str = "en") -> tuple:
     """Retrieve RAG context chunks for a given chapter and theme, scoped by language."""
