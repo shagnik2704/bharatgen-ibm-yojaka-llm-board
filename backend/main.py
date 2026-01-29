@@ -254,10 +254,10 @@ except Exception as e:
     print(f"Warning: Failed to initialize Param-1-2.9B-Instruct: {e}")
     tokenizer_29 = None
     model_29 = None
-GEval_evaluator = GEval(
-    groq_api_key=groq_api_key,  
-    likert_scale=[1, 2, 3, 4, 5]  # or [1..7]
-)
+# GEval_evaluator = GEval(
+#     groq_api_key=groq_api_key,  
+#     likert_scale=[1, 2, 3, 4, 5]  # or [1..7]
+# )
 # Share clients with model_runner
 from model_runner import set_clients
 set_clients(gemini_client=gemini_client, openai_client=openai_client, groq_client=groq_client, tokenizer_29=tokenizer_29, model_29=model_29)
@@ -643,6 +643,13 @@ async def ask_llm(req: QueryRequest):
                     q["source_text"] = source_chunks
                 if source_meta:
                     q["source_meta"] = {"pdf_path": source_meta.get("source_path"), "page": source_meta.get("page")}
+                
+                GEval_evaluator = GEval(
+                    groq_api_key=groq_api_key,  
+                    model = req.board.chairman_model_id,
+                    likert_scale=[1, 2, 3, 4, 5]  # or [1..7]
+                )
+                
                 theme_score = GEval_evaluator.evaluate(
                     task_description=f"You are to evaluate the thematic alignment of a question. The provided theme is {req.theme}.",
                     evaluation_parameter="You to rate how well it is aligned on a scale of 1 to 5. A score of 1 indicates low alignemtn while a score of 5 indicates high alignment.",

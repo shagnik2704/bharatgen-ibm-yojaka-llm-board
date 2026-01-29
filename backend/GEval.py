@@ -1,6 +1,16 @@
 import json,random
 from typing import Dict, List
 from groq import Groq
+groq_id_model_mapping = {
+    "groq-llama-8b": "llama-3.1-8b-instant",
+    "groq-llama-70b": "llama-3.3-70b-versatile",
+    "rag-piped-groq-70b": "llama-3.3-70b-versatile",
+    "groq-llama-guard": "meta-llama/llama-guard-4-12b",
+
+    # Groq – GPT OSS
+    "groq-gpt-oss-120b": "openai/gpt-oss-120b",
+    "groq-gpt-oss-20b": "openai/gpt-oss-20b",
+}
 class GEval:
     def __init__(
         self,
@@ -19,10 +29,13 @@ class GEval:
             Likert scale values (default: [1,2,3,4,5])
         """
         self.client = Groq(api_key=groq_api_key)
-        self.model = model
+        if(model in groq_id_model_mapping):
+            self.model = groq_id_model_mapping[model]
+        else:
+            self.model = model
         self.likert_scale = likert_scale or [1, 2, 3, 4, 5]
         self.output_format_scale=self.generate_likert_probability_string()
-        print(self.output_format_scale)
+        
     def generate_likert_probability_string(self):
         # Step 1: generate random positive numbers
         raw = [random.random() for _ in self.likert_scale]
