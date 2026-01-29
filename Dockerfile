@@ -2,12 +2,8 @@ FROM python:3.11
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV FRONTEND_RELATIVE_PATH="/frontend/index.html"
 
 WORKDIR /app
-
-# ✅ frontend is now visible
-COPY frontend /frontend
 
 # Install deps
 COPY backend/requirements.txt .
