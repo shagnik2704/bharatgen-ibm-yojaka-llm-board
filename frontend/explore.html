@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Explore Source - BharatGen</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #f8fafc;
+            --bg-secondary: #ffffff;
+            --text-primary: #1e293b;
+            --text-secondary: #475569;
+            --text-muted: #64748b;
+            --card-bg: #ffffff;
+            --card-border: rgba(15, 23, 42, 0.08);
+            --accent-primary: #6366f1;
+            --accent-primary-hover: #4f46e5;
+            --accent-primary-light: rgba(99, 102, 241, 0.1);
+            --border-medium: rgba(15, 23, 42, 0.15);
+            --input-bg: #f8fafc;
+            --input-border: rgba(15, 23, 42, 0.12);
+            --scrollbar-thumb: #cbd5e1;
+            --scrollbar-track: #f1f5f9;
+        }
+        [data-theme="dark"] {
+            --bg-primary: #0f1420;
+            --bg-secondary: #161d2f;
+            --text-primary: #e2e8f0;
+            --text-secondary: #cbd5e1;
+            --text-muted: #94a3b8;
+            --card-bg: #161d2f;
+            --card-border: rgba(255, 255, 255, 0.05);
+            --accent-primary: #6366f1;
+            --accent-primary-hover: #818cf8;
+            --accent-primary-light: rgba(99, 102, 241, 0.15);
+            --border-medium: rgba(255, 255, 255, 0.1);
+            --input-bg: rgba(15, 20, 32, 0.6);
+            --input-border: rgba(255, 255, 255, 0.08);
+            --scrollbar-thumb: #334155;
+            --scrollbar-track: #1e293b;
+        }
+        body { font-family: system-ui, sans-serif; background: var(--bg-primary); color: var(--text-primary); margin: 0; min-height: 100vh; }
+        .glass-panel { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 1rem; }
+        .btn-primary { background: var(--accent-primary); color: white; border: none; border-radius: 0.75rem; padding: 0.75rem 1.25rem; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        .btn-primary:hover { background: var(--accent-primary-hover); }
+        .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+        #pdfCanvas { max-width: 100%; height: auto; display: block; }
+        .chat-messages { overflow-y: auto; max-height: 400px; }
+        .chat-messages::-webkit-scrollbar { width: 6px; }
+        .chat-messages::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+        .chat-messages::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
+    </style>
+</head>
+<body class="p-4 md:p-6">
+    <div id="noContext" class="hidden text-center py-16 px-4">
+        <p class="text-lg mb-4" style="color: var(--text-secondary);">No source context. Use <strong>Explore in PDF</strong> from a question on the generator page.</p>
+        <a href="/" class="btn-primary inline-block">Back to Generator</a>
+    </div>
+
+    <div id="exploreApp" class="hidden max-w-7xl mx-auto">
+        <header class="flex items-center justify-between mb-4">
+            <h1 class="text-xl font-bold" style="color: var(--text-primary);">Explore Source</h1>
+            <a href="/" class="text-sm" style="color: var(--accent-primary);">Back to Generator</a>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+            <!-- PDF panel -->
+            <div class="glass-panel p-4 order-2 lg:order-1">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-sm font-semibold" style="color: var(--text-secondary);">PDF</span>
+                    <div id="pdfNav" class="hidden flex items-center gap-2">
+                        <button type="button" id="pdfPrev" class="px-3 py-1 rounded border text-sm" style="border-color: var(--border-medium); color: var(--text-primary);">Prev</button>
+                        <span id="pdfPageLabel" class="text-sm" style="color: var(--text-muted);">Page 1</span>
+                        <button type="button" id="pdfNext" class="px-3 py-1 rounded border text-sm" style="border-color: var(--border-medium); color: var(--text-primary);">Next</button>
+                    </div>
+                </div>
+                <div id="pdfContainer" class="flex justify-center bg-black/5 rounded-lg min-h-[320px] items-center">
+                    <p id="pdfPlaceholder" class="text-sm" style="color: var(--text-muted);">No PDF for this source.</p>
+                    <canvas id="pdfCanvas" class="hidden"></canvas>
+                </div>
+            </div>
+
+            <!-- Chat panel -->
+            <div class="glass-panel p-4 flex flex-col order-1 lg:order-2" style="min-height: 420px;">
+                <div class="text-sm font-semibold mb-3" style="color: var(--text-secondary);">Chat about this source</div>
+                <div id="chatMessages" class="chat-messages flex-1 space-y-3 mb-4 p-2 rounded" style="background: var(--input-bg);">
+                    <p class="text-sm" style="color: var(--text-muted);">Ask a question about the source text. Answers are based only on the extracted material.</p>
+                </div>
+                <div class="flex gap-2">
+                    <input type="text" id="chatInput" placeholder="Type your question..." class="flex-1 px-4 py-3 rounded-xl border text-sm"
+                        style="background: var(--input-bg); border-color: var(--input-border); color: var(--text-primary);">
+                    <button type="button" id="chatSend" class="btn-primary px-4 py-3">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            const pdfjsLib = window['pdfjs-dist/build/pdf'];
+            if (pdfjsLib) {
+                pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+            }
+
+            let context = null;
+            let pdfDoc = null;
+            let currentPageNum = 1;
+            let totalPages = 0;
+            const chatMessages = [];
+
+            function getBaseUrl() {
+                const base = window.location.origin;
+                return base.endsWith('/') ? base.slice(0, -1) : base;
+            }
+
+            function loadContext() {
+                try {
+                    const raw = sessionStorage.getItem('exploreContext');
+                    if (!raw) return null;
+                    return JSON.parse(raw);
+                } catch (e) {
+                    return null;
+                }
+            }
+
+            function showNoContext() {
+                document.getElementById('noContext').classList.remove('hidden');
+                document.getElementById('exploreApp').classList.add('hidden');
+            }
+
+            function showApp() {
+                document.getElementById('noContext').classList.add('hidden');
+                document.getElementById('exploreApp').classList.remove('hidden');
+            }
+
+            async function loadPdf(path, pageNum) {
+                const canvas = document.getElementById('pdfCanvas');
+                const placeholder = document.getElementById('pdfPlaceholder');
+                const nav = document.getElementById('pdfNav');
+                const pageLabel = document.getElementById('pdfPageLabel');
+                const base = getBaseUrl();
+                const url = base + '/api/pdf?path=' + encodeURIComponent(path);
+
+                if (!pdfjsLib) {
+                    placeholder.textContent = 'PDF.js not loaded.';
+                    return;
+                }
+                try {
+                    const loadingTask = pdfjsLib.getDocument(url);
+                    pdfDoc = await loadingTask.promise;
+                    totalPages = pdfDoc.numPages;
+                    currentPageNum = Math.min(Math.max(1, pageNum || 1), totalPages);
+                    placeholder.classList.add('hidden');
+                    canvas.classList.remove('hidden');
+                    nav.classList.remove('hidden');
+                    await renderPage(currentPageNum);
+                    pageLabel.textContent = 'Page ' + currentPageNum + ' of ' + totalPages;
+                } catch (err) {
+                    placeholder.textContent = 'Could not load PDF: ' + (err.message || 'Unknown error');
+                    nav.classList.add('hidden');
+                }
+            }
+
+            async function renderPage(num) {
+                if (!pdfDoc) return;
+                const page = await pdfDoc.getPage(num);
+                const canvas = document.getElementById('pdfCanvas');
+                const ctx = canvas.getContext('2d');
+                const scale = 1.5;
+                const viewport = page.getViewport({ scale });
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+                await page.render({ canvasContext: ctx, viewport }).promise;
+                document.getElementById('pdfPageLabel').textContent = 'Page ' + num + ' of ' + totalPages;
+            }
+
+            document.getElementById('pdfPrev').addEventListener('click', async function() {
+                if (pdfDoc && currentPageNum > 1) {
+                    currentPageNum--;
+                    await renderPage(currentPageNum);
+                }
+            });
+            document.getElementById('pdfNext').addEventListener('click', async function() {
+                if (pdfDoc && currentPageNum < totalPages) {
+                    currentPageNum++;
+                    await renderPage(currentPageNum);
+                }
+            });
+
+            function getChunkText() {
+                if (!context) return '';
+                const parts = [context.topic_chunk || ''];
+                if (context.theme_chunk) parts.push(context.theme_chunk);
+                return parts.join('\n\n');
+            }
+
+            function appendMessage(role, content) {
+                const container = document.getElementById('chatMessages');
+                const firstHint = container.querySelector('p');
+                if (firstHint && role === 'user') firstHint.remove();
+                const div = document.createElement('div');
+                div.className = 'text-sm p-3 rounded-lg ' + (role === 'user' ? 'ml-4' : 'mr-4');
+                div.style.background = role === 'user' ? 'var(--accent-primary-light)' : 'var(--card-border)';
+                div.style.color = 'var(--text-primary)';
+                div.innerHTML = '<strong>' + (role === 'user' ? 'You' : 'Assistant') + ':</strong> ' + escapeHtml(content);
+                container.appendChild(div);
+                container.scrollTop = container.scrollHeight;
+            }
+
+            function escapeHtml(s) {
+                const div = document.createElement('div');
+                div.textContent = s;
+                return div.innerHTML;
+            }
+
+            async function sendChat() {
+                const input = document.getElementById('chatInput');
+                const sendBtn = document.getElementById('chatSend');
+                const text = (input.value || '').trim();
+                if (!text || !context) return;
+                input.value = '';
+                sendBtn.disabled = true;
+                chatMessages.push({ role: 'user', content: text });
+                appendMessage('user', text);
+
+                const base = getBaseUrl();
+                try {
+                    const res = await fetch(base + '/explore/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            chunk_text: getChunkText(),
+                            pdf_path: context.pdf_path || null,
+                            page: context.page != null ? context.page : null,
+                            messages: chatMessages
+                        })
+                    });
+                    const data = await res.json();
+                    const reply = data.reply || 'No response.';
+                    chatMessages.push({ role: 'assistant', content: reply });
+                    appendMessage('assistant', reply);
+                } catch (err) {
+                    appendMessage('assistant', 'Error: ' + (err.message || 'Request failed'));
+                }
+                sendBtn.disabled = false;
+            }
+
+            document.getElementById('chatSend').addEventListener('click', sendChat);
+            document.getElementById('chatInput').addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') sendChat();
+            });
+
+            context = loadContext();
+            if (!context) {
+                showNoContext();
+                return;
+            }
+            showApp();
+            if (context.pdf_path && context.pdf_path.length > 0) {
+                loadPdf(context.pdf_path, context.page);
+            } else {
+                document.getElementById('pdfPlaceholder').textContent = 'No PDF path for this source.';
+            }
+        })();
+    </script>
+</body>
+</html>

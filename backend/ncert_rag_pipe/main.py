@@ -67,24 +67,38 @@ class RAGRetriever:
             self.chunks = pickle.load(f)
         print(f"RAG retriever loaded successfully for language='{language}'!")
 
+    def _chunk_text(self, chunk):
+        """Extract text from chunk; chunk may be dict or legacy str."""
+        if isinstance(chunk, dict):
+            return chunk.get("text", "")
+        return chunk if isinstance(chunk, str) else ""
+
+    def _chunk_meta(self, chunk):
+        """Extract metadata from chunk; chunk may be dict or legacy str."""
+        if isinstance(chunk, dict):
+            return {"source_path": chunk.get("source_path"), "page": chunk.get("page")}
+        return {}
+
     def get_context(self, query, k=DEFAULT_K):
         """
         Retrieves the top K most similar chunks.
-        Returns the combined text and the best similarity score.
+        Returns (combined_text, best_score, metadata_list).
+        metadata_list[i] = {source_path, page} for retrieved chunk i (or {} for legacy string chunks).
         """
         query_vec = self.model.encode([query])
         distances, indices = self.index.search(query_vec, k)
         
         retrieved_texts = []
+        metadata_list = []
         for i in range(k):
             idx = indices[0][i]
             if idx != -1:
-                retrieved_texts.append(self.chunks[idx])
+                raw = self.chunks[idx]
+                retrieved_texts.append(self._chunk_text(raw))
+                metadata_list.append(self._chunk_meta(raw))
         
-        # Calculate similarity score for the #1 result (Distance to Similarity)
         best_score = 1 / (1 + distances[0][0])
-        
-        return "\n\n".join(retrieved_texts), best_score
+        return "\n\n".join(retrieved_texts), best_score, metadata_list
 
 def get_retriever(language: str = "en"):
     """Get or create the global RAG retriever instance for a given language."""
@@ -96,9 +110,9 @@ def get_retriever(language: str = "en"):
 def main(topic_input, theme_input, language: str = "en"):
     retriever = get_retriever(language=language)
 
-    # 2. Retrieval
-    topic_chunk, t_score = retriever.get_context(topic_input)
-    theme_chunk, th_score = retriever.get_context(theme_input)
+    # 2. Retrieval (get_context returns text, score, metadata_list)
+    topic_chunk, t_score, topic_meta = retriever.get_context(topic_input)
+    theme_chunk, th_score, theme_meta = retriever.get_context(theme_input)
 
     # 3. Output Full Results
     print("\n" + "="*80)
@@ -107,13 +121,12 @@ def main(topic_input, theme_input, language: str = "en"):
 
     print(f"\n🔵 TOPIC CHUNK (Similarity: {t_score:.2%})")
     print("-" * 40)
-    print(topic_chunk) # This prints the full ~1000 word chunk
+    print(topic_chunk)
 
     print(f"\n🟢 THEME CHUNK (Similarity: {th_score:.2%})")
     print("-" * 40)
-    print(theme_chunk) # This prints the full ~1000 word chunk
+    print(theme_chunk)
     
     print("\n" + "="*80)
 
-    # Return as a dictionary for your Assessment Prompt logic
-    return topic_chunk, theme_chunk
+    return topic_chunk, theme_chunk, topic_meta, theme_meta

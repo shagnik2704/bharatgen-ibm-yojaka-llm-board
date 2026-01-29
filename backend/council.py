@@ -355,7 +355,7 @@ async def run_param_orchestrator_flow(chairman_model_id: str, member_model_ids: 
     language = (language or "en").lower()
     # Always retrieve RAG context for Param orchestration (used for member grounding + Param verification)
     loop = asyncio.get_event_loop()
-    topic_chunk, theme_chunk = await loop.run_in_executor(
+    topic_chunk, theme_chunk, topic_meta, theme_meta = await loop.run_in_executor(
         None,
         lambda: get_rag_context(chapter, theme, language=language)
     )
@@ -391,10 +391,17 @@ async def run_param_orchestrator_flow(chairman_model_id: str, member_model_ids: 
         for mid, out in zip(member_model_ids, member_outputs)
     ]
 
+    source_meta = None
+    if topic_meta and len(topic_meta) > 0 and topic_meta[0]:
+        source_meta = topic_meta[0]
+    elif theme_meta and len(theme_meta) > 0 and theme_meta[0]:
+        source_meta = theme_meta[0]
     return {
         "chairman_proposal": "[Param orchestrator: retrieved context, members generated, chairman verified+selected one.]",
         "member_opinions": member_opinions,
-        "final_output": final_output
+        "final_output": final_output,
+        "source_chunks": {"topic_chunk": topic_chunk, "theme_chunk": theme_chunk},
+        "source_meta": source_meta,
     }
 
 
@@ -434,15 +441,22 @@ async def run_council_flow(chairman_model_id: str, member_model_ids: List[str],
         print("[Council] Language=Hindi; prompts will enforce Hindi (Devanagari) output.")
     topic_chunk = None
     theme_chunk = None
+    topic_meta = []
+    theme_meta = []
     if needs_rag_context:
         # RAG context retrieval might be blocking, run in executor
         loop = asyncio.get_event_loop()
-        topic_chunk, theme_chunk = await loop.run_in_executor(
+        topic_chunk, theme_chunk, topic_meta, theme_meta = await loop.run_in_executor(
             None,
             lambda: get_rag_context(chapter, theme, language=language)
         )
     
     context_chunks = (topic_chunk, theme_chunk) if topic_chunk and theme_chunk else None
+    source_meta = None
+    if needs_rag_context and topic_meta and len(topic_meta) > 0 and topic_meta[0]:
+        source_meta = topic_meta[0]
+    elif needs_rag_context and theme_meta and len(theme_meta) > 0 and theme_meta[0]:
+        source_meta = theme_meta[0]
     
     # Stage 1: Chairman proposal
     chairman_prompt = build_chairman_proposal_prompt(
@@ -616,8 +630,13 @@ async def run_council_flow(chairman_model_id: str, member_model_ids: List[str],
     
     final_output = await run_model(chairman_model_id, synthesis_prompt, context_chunks)
     
+    source_chunks = None
+    if topic_chunk and theme_chunk:
+        source_chunks = {"topic_chunk": topic_chunk, "theme_chunk": theme_chunk}
     return {
         "chairman_proposal": chairman_output,
         "member_opinions": member_opinions,
-        "final_output": final_output
+        "final_output": final_output,
+        "source_chunks": source_chunks,
+        "source_meta": source_meta,
     }

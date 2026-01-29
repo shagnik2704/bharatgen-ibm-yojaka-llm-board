@@ -317,5 +317,9 @@ def needs_rag(model_id: str) -> bool:
     return model_id in ["rag-piped-llama", "rag-piped-param-instruct", "rag-piped-groq-70b"]
 
 def get_rag_context(chapter: str, theme: str, language: str = "en") -> tuple:
-    """Retrieve RAG context chunks for a given chapter and theme, scoped by language."""
+    """
+    Retrieve RAG context chunks for a given chapter and theme, scoped by language.
+    Returns (topic_chunk, theme_chunk, topic_meta, theme_meta).
+    topic_meta / theme_meta are lists of {source_path, page} for retrieved chunks.
+    """
     return ncert_rag.main(chapter, theme, language=language)

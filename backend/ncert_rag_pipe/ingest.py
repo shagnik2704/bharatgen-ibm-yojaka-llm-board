@@ -48,18 +48,29 @@ SUPPORTED_EXTS = (".pdf", ".txt", ".md")
 # HELPER FUNCTIONS
 # -----------------------------
 def read_pdf(path):
-    """Extracts text from a single PDF file."""
+    """Extracts text from a single PDF file. Legacy: returns plain text."""
+    text, _ = read_pdf_with_pages(path)
+    return text
+
+
+def read_pdf_with_pages(path):
+    """
+    Extracts text from a PDF and returns page word counts for chunk-to-page mapping.
+    Returns (full_text, page_word_counts) where page_word_counts[i] = word count on page i+1.
+    """
     try:
         reader = PdfReader(path)
-        text = ""
+        page_texts = []
         for page in reader.pages:
             content = page.extract_text()
-            if content:
-                text += content + " "
-        return text
+            page_texts.append(content or "")
+        full_text = " ".join(page_texts)
+        page_word_counts = [len(p.split()) for p in page_texts]
+        return full_text, page_word_counts
     except Exception as e:
         print(f"⚠️ Error reading {path}: {e}")
-        return ""
+        return "", []
+
 
 def read_text_file(path: str) -> str:
     """Reads UTF-8 text files (txt/md)."""
@@ -70,6 +81,23 @@ def read_text_file(path: str) -> str:
         print(f"⚠️ Error reading {path}: {e}")
         return ""
 
+
+def read_any_with_pages(path: str):
+    """
+    Returns (full_text, page_word_counts).
+    For PDF: page_word_counts per page; for txt/md: single-element list (treated as page 1).
+    """
+    p = path.lower()
+    if p.endswith(".pdf"):
+        return read_pdf_with_pages(path)
+    if p.endswith(".txt") or p.endswith(".md"):
+        text = read_text_file(path)
+        if text:
+            return text, [len(text.split())]
+        return "", [0]
+    return "", [0]
+
+
 def read_any(path: str) -> str:
     p = path.lower()
     if p.endswith(".pdf"):
@@ -78,10 +106,38 @@ def read_any(path: str) -> str:
         return read_text_file(path)
     return ""
 
+
 def chunk_text(text, chunk_size=1000):
     """Splits text into chunks of specified word count."""
     words = text.split()
     return [" ".join(words[i:i + chunk_size]) for i in range(0, len(words), chunk_size)]
+
+
+def chunk_text_with_page_map(text, page_word_counts, chunk_size=1000):
+    """
+    Splits text into chunks and returns list of (chunk_text, page_num).
+    page_num is the 1-based page where the chunk starts (by word offset).
+    """
+    words = text.split()
+    if not page_word_counts:
+        return [(" ".join(words[i:i + chunk_size]), 1) for i in range(0, len(words), chunk_size)]
+    # Cumulative word index at start of each page (1-based page index)
+    cumul = [0]
+    for c in page_word_counts:
+        cumul.append(cumul[-1] + c)
+    result = []
+    for i in range(0, len(words), chunk_size):
+        chunk_words = words[i : i + chunk_size]
+        chunk_text_str = " ".join(chunk_words)
+        # Find page containing word index i
+        page_num = 1
+        for p in range(1, len(cumul)):
+            if i < cumul[p]:
+                page_num = p
+                break
+            page_num = p
+        result.append((chunk_text_str, page_num))
+    return result
 
 def normalize_chapter_title(filename: str) -> str:
     """
@@ -113,10 +169,12 @@ def ensure_dir(path: Path) -> None:
 def run_ingestion_for_language(lang_code: str) -> None:
     """
     Build a language-specific FAISS index and a chapters manifest.
+    Chunks are stored with metadata: {"text", "source_path", "page"} for PDF source and page.
     Output:
       indexes/<lang_code>/vector_db.index
-      indexes/<lang_code>/chunks_metadata.pkl
+      indexes/<lang_code>/chunks_metadata.pkl  (list of dicts with text, source_path, page)
       indexes/<lang_code>/chapters_manifest.json
+    Re-run ingestion after code changes that add metadata so indexes include source_path and page.
     """
     lang_root = find_language_root(lang_code)
     if lang_root is None:
@@ -136,8 +194,9 @@ def run_ingestion_for_language(lang_code: str) -> None:
         print(f"❌ No subject folders found in {lang_root}.")
         return
 
+    books_root_resolved = Path(BOOKS_ROOT).resolve()
     chapters_manifest: dict[str, list[str]] = {}
-    all_chunks: list[str] = []
+    all_chunks: list[dict] = []  # list of {"text": str, "source_path": str, "page": int}
 
     for subject_dir in sorted(subjects, key=lambda p: p.name.lower()):
         subject = subject_dir.name
@@ -157,11 +216,20 @@ def run_ingestion_for_language(lang_code: str) -> None:
                 chapters_manifest[subject].append(chapter_title)
 
             print(f"📖 [{lang_code}] {subject}: {fname}")
-            text = read_any(fp)
+            text, page_word_counts = read_any_with_pages(fp)
             if not text.strip():
                 continue
-            file_chunks = chunk_text(text, CHUNK_SIZE)
-            all_chunks.extend(file_chunks)
+            try:
+                source_path = Path(fp).resolve().relative_to(books_root_resolved)
+                source_path_str = str(source_path).replace("\\", "/")
+            except ValueError:
+                source_path_str = str(Path(fp).name)
+            for chunk_text_str, page_num in chunk_text_with_page_map(text, page_word_counts, CHUNK_SIZE):
+                all_chunks.append({
+                    "text": chunk_text_str,
+                    "source_path": source_path_str,
+                    "page": page_num,
+                })
 
     if not all_chunks:
         print(f"❌ No chunks created for language='{lang_code}'.")
@@ -170,7 +238,8 @@ def run_ingestion_for_language(lang_code: str) -> None:
     print(f"📦 [{lang_code}] Total chunks created: {len(all_chunks)}")
     print("🧠 Generating embeddings (this may take a moment)...")
     model = SentenceTransformer(MODEL_NAME)
-    embeddings = model.encode(all_chunks, show_progress_bar=True)
+    chunk_texts_only = [c["text"] for c in all_chunks]
+    embeddings = model.encode(chunk_texts_only, show_progress_bar=True)
 
     dim = embeddings.shape[1]
     index = faiss.IndexFlatL2(dim)

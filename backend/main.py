@@ -398,6 +398,69 @@ def parse_ai_output(raw_text):
 async def serve_index():
     return FileResponse(BASE_DIR / os.getenv("FRONTEND_RELATIVE_PATH", "../frontend/index.html"))
 
+
+@app.get("/explore.html")
+async def serve_explore():
+    return FileResponse(BASE_DIR / "../frontend/explore.html")
+
+def _get_books_root():
+    """Books root for PDF serving; must match ingest BOOKS_ROOT (env BHARATGEN_BOOKS_PATH or project/data)."""
+    return Path(os.getenv("BHARATGEN_BOOKS_PATH", str(BASE_DIR.parent / "data"))).resolve()
+
+
+@app.get("/api/pdf")
+async def serve_pdf(path: str):
+    """
+    Serve a PDF from the books root. path is relative (e.g. English/Biology/Class-11/file.pdf).
+    Validates path is under BOOKS_ROOT and returns FileResponse.
+    """
+    if not path or ".." in path or path.startswith("/"):
+        raise HTTPException(status_code=400, detail="Invalid path")
+    books_root = _get_books_root()
+    full = (books_root / path).resolve()
+    try:
+        if not full.is_file():
+            raise HTTPException(status_code=404, detail="File not found")
+        if os.path.commonpath([str(full), str(books_root)]) != str(books_root):
+            raise HTTPException(status_code=403, detail="Access denied")
+    except HTTPException:
+        raise
+    return FileResponse(full, media_type="application/pdf", filename=full.name)
+
+
+class ExploreChatRequest(BaseModel):
+    chunk_text: str
+    pdf_path: Optional[str] = None
+    page: Optional[int] = None
+    messages: List[dict]  # [{"role": "user"|"assistant", "content": str}]
+
+
+@app.post("/explore/chat")
+async def explore_chat(body: ExploreChatRequest):
+    """
+    Chat with context grounded in the provided source chunk. Answers based on chunk_text only.
+    """
+    try:
+        system = (
+            "You are a helpful tutor. Answer ONLY using the following source material. "
+            "Do not add information from outside the source. If the source does not contain enough information, say so. "
+            "Keep answers concise and educational.\n\n### Source material:\n"
+        ) + body.chunk_text
+        if body.pdf_path and body.page is not None:
+            system += f"\n\n(The student may be viewing the PDF at page {body.page}.)"
+        prompt = f"{system}\n\n---\n\nConversation:\n"
+        for m in body.messages:
+            prompt += f"{m.get('role', 'user').capitalize()}: {m.get('content', '')}\n"
+        prompt += "\nAssistant:"
+        explore_model = os.getenv("EXPLORE_CHAT_MODEL", "groq-llama-8b")
+        reply = await run_model(explore_model, prompt, None)
+        if not reply:
+            reply = "I couldn't generate a response. Please try again."
+        return {"reply": reply.strip()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/chapters")
 async def list_chapters(subject: str, language: str = "en"):
     """
@@ -522,7 +585,9 @@ async def ask_llm(req: QueryRequest):
                         if questions:
                             print("[Council] Using chairman proposal as fallback (synthesis output did not parse).")
             
-            # Add board metadata to each question
+            # Add board metadata and source text/meta to each question
+            source_chunks = council_result.get("source_chunks")
+            source_meta = council_result.get("source_meta")
             for q in questions:
                 q["board_metadata"] = {
                     "chairman": req.board.chairman_model_id,
@@ -531,6 +596,10 @@ async def ask_llm(req: QueryRequest):
                     "chairman_proposal": council_result["chairman_proposal"],
                     "member_opinions": council_result["member_opinions"]
                 }
+                if source_chunks:
+                    q["source_text"] = source_chunks
+                if source_meta:
+                    q["source_meta"] = {"pdf_path": source_meta.get("source_path"), "page": source_meta.get("page")}
             
             print(f"Council flow completed. Generated {len(questions)} questions.\n")
             return questions
@@ -586,8 +655,10 @@ async def ask_llm(req: QueryRequest):
             
             # Check if RAG is needed
             context_chunks = None
+            source_text_attach = None
+            source_meta_attach = None
             if needs_rag(req.model_id):
-                topic_chunk, theme_chunk = get_rag_context(req.chapter, req.theme, language=req.language)
+                topic_chunk, theme_chunk, topic_meta, theme_meta = get_rag_context(req.chapter, req.theme, language=req.language)
                 # More aggressive truncation - limit to ~800 chars each to keep total prompt manageable
                 max_chunk_length = 800
                 if len(topic_chunk) > max_chunk_length:
@@ -596,6 +667,10 @@ async def ask_llm(req: QueryRequest):
                     theme_chunk = theme_chunk[:max_chunk_length] + "... [truncated]"
                 print(f"[DEBUG] RAG chunks truncated - topic: {len(topic_chunk)}, theme: {len(theme_chunk)}")
                 context_chunks = (topic_chunk, theme_chunk)
+                source_text_attach = {"topic_chunk": topic_chunk, "theme_chunk": theme_chunk}
+                primary_meta = (topic_meta[0] if topic_meta and topic_meta[0] else None) or (theme_meta[0] if theme_meta and theme_meta[0] else None)
+                if primary_meta:
+                    source_meta_attach = {"pdf_path": primary_meta.get("source_path"), "page": primary_meta.get("page")}
                 # Use RAG-specific prompt
                 prompt = (
                     "### ROLE\n"
@@ -633,7 +708,13 @@ async def ask_llm(req: QueryRequest):
             
             raw_output = await run_model(req.model_id, prompt, context_chunks)
             print(raw_output + "\n")
-            return parse_ai_output(raw_output)
+            questions = parse_ai_output(raw_output)
+            for q in questions:
+                if source_text_attach:
+                    q["source_text"] = source_text_attach
+                if source_meta_attach:
+                    q["source_meta"] = source_meta_attach
+            return questions
         else:
             raise HTTPException(
                 status_code=400,

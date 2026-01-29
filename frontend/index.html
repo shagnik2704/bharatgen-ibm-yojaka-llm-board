@@ -577,6 +577,34 @@
                     >
                         ...
                     </div>
+
+                    <div id="sourceTextSection" class="hidden space-y-3">
+                        <button 
+                            id="toggleSourceTextBtn" 
+                            onclick="toggleSourceText()" 
+                            class="w-full py-3 rounded-2xl border text-xs font-bold uppercase tracking-wider transition-all btn-secondary flex items-center justify-between px-4"
+                            style="border-color: var(--border-medium); color: var(--text-secondary);"
+                        >
+                            <span>SOURCE TEXT</span>
+                            <i id="sourceTextIcon" class="fa-solid fa-chevron-down transition-transform"></i>
+                        </button>
+                        <div 
+                            id="sourceTextContent" 
+                            class="hidden glass-panel p-6 rounded-2xl space-y-4 max-h-48 overflow-y-auto custom-scroll"
+                            style="color: var(--text-secondary);"
+                        >
+                            <div id="sourceTopicChunk" class="text-sm leading-relaxed"></div>
+                            <div id="sourceThemeChunk" class="text-sm leading-relaxed border-t pt-3 mt-3" style="border-color: var(--border-medium);"></div>
+                        </div>
+                        <button 
+                            id="exploreBtn" 
+                            onclick="openExplore()" 
+                            class="hidden w-full py-3 rounded-2xl border font-bold text-xs tracking-wider transition-all btn-primary"
+                            style="border-color: var(--accent-primary);"
+                        >
+                            EXPLORE IN PDF
+                        </button>
+                    </div>
                     
                     <div id="boardOpinionsSection" class="hidden space-y-3">
                         <button 
@@ -907,7 +935,7 @@
             document.getElementById('sidebarContent').innerHTML = `
                 <p class='mb-2 font-bold' style="color: var(--text-primary);">Theme: ${theme}</p>
                 <p style="color: var(--text-secondary);">Retrieving reference chunks (${activeLanguage}) for NCERT ${activeSubject} Chapter: ${chapter}...</p>
-                <p class='mt-4 text-xs opacity-70' style="color: var(--text-muted);">Note: To see the full chunk, the backend return must include the 'topic_chunk' variable.</p>
+                <p class='mt-4 text-xs opacity-70' style="color: var(--text-muted);">When questions are ready, expand <strong>Source text</strong> to see the extracted chunk and use <strong>Explore in PDF</strong> to view the source page and chat.</p>
             `;
             document.getElementById('sidebarToggleBtn').classList.remove('hidden');
             document.getElementById('sidebarToggleBtn').classList.add('flex');
@@ -1001,6 +1029,29 @@
             document.getElementById('progressBar').innerText = `PROGRESS: ${cursor + 1} OF ${filteredQuestions.length}`;
             document.getElementById('revealBtn').innerText = "REVEAL STUDY LOGIC";
             
+            // Source text and Explore
+            const sourceTextSection = document.getElementById('sourceTextSection');
+            const sourceTextContent = document.getElementById('sourceTextContent');
+            const exploreBtn = document.getElementById('exploreBtn');
+            if (q.source_text) {
+                sourceTextSection.classList.remove('hidden');
+                document.getElementById('sourceTopicChunk').innerText = q.source_text.topic_chunk || '';
+                const themeEl = document.getElementById('sourceThemeChunk');
+                if (q.source_text.theme_chunk) {
+                    themeEl.classList.remove('hidden');
+                    themeEl.innerText = q.source_text.theme_chunk;
+                } else {
+                    themeEl.classList.add('hidden');
+                }
+                sourceTextContent.classList.add('hidden');
+                document.getElementById('sourceTextIcon').classList.remove('fa-chevron-up');
+                document.getElementById('sourceTextIcon').classList.add('fa-chevron-down');
+                exploreBtn.classList.remove('hidden');
+            } else {
+                sourceTextSection.classList.add('hidden');
+                exploreBtn.classList.add('hidden');
+            }
+            
             // Render board opinions if available
             if (q.board_metadata) {
                 renderBoardOpinions(q.board_metadata);
@@ -1066,6 +1117,31 @@
             content.classList.toggle('hidden');
             icon.classList.toggle('fa-chevron-down');
             icon.classList.toggle('fa-chevron-up');
+        }
+
+        function toggleSourceText() {
+            const content = document.getElementById('sourceTextContent');
+            const icon = document.getElementById('sourceTextIcon');
+            content.classList.toggle('hidden');
+            icon.classList.toggle('fa-chevron-down');
+            icon.classList.toggle('fa-chevron-up');
+        }
+
+        function openExplore() {
+            const q = filteredQuestions[cursor];
+            if (!q || !q.source_text) return;
+            const context = {
+                topic_chunk: q.source_text.topic_chunk || '',
+                theme_chunk: q.source_text.theme_chunk || '',
+                pdf_path: (q.source_meta && q.source_meta.pdf_path) ? q.source_meta.pdf_path : null,
+                page: (q.source_meta && q.source_meta.page != null) ? q.source_meta.page : null
+            };
+            try {
+                sessionStorage.setItem('exploreContext', JSON.stringify(context));
+            } catch (e) {
+                console.warn('sessionStorage failed', e);
+            }
+            window.open('explore.html', '_blank', 'noopener');
         }
 
         function nextQ() { if(cursor < filteredQuestions.length - 1) { cursor++; renderQ(); } }
