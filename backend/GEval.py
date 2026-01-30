@@ -1,6 +1,9 @@
 import json,random
 from typing import Dict, List
 from groq import Groq
+from urllib.parse import urlparse
+from transformers import AutoTokenizer, AutoModelForCausalLM
+import torch,requests,re
 groq_id_model_mapping = {
     "groq-llama-8b": "llama-3.1-8b-instant",
     "groq-llama-70b": "llama-3.3-70b-versatile",
@@ -14,8 +17,8 @@ groq_id_model_mapping = {
 class GEval:
     def __init__(
         self,
-        groq_api_key,
-        model: str = "llama-3.3-70b-versatile",
+        model: str,
+        groq_api_key: str='',
         likert_scale: List[int] = None,
     ):
         """
@@ -28,11 +31,24 @@ class GEval:
         likert_scale : list[int]
             Likert scale values (default: [1,2,3,4,5])
         """
+        is_url = lambda s: all([urlparse(s).scheme, urlparse(s).netloc])
         self.client = Groq(api_key=groq_api_key)
-        if(model in groq_id_model_mapping):
+        self.model_name=model
+        print("MODEL NAME : ",model)
+        if(is_url(model)):
+            self._call_model=self._call_vllm
+            self.model = model
+        elif('groq' in model):
+            self._call_model=self._call_groq
             self.model = groq_id_model_mapping[model]
         else:
-            self.model = model
+            self._call_model=self._call_hf
+            self.tokenizer = AutoTokenizer.from_pretrained(model, trust_remote_code=False)
+            self.model = AutoModelForCausalLM.from_pretrained(
+                model,
+                trust_remote_code=True,
+                device_map="auto"
+            )
         self.likert_scale = likert_scale or [1, 2, 3, 4, 5]
         self.output_format_scale=self.generate_likert_probability_string()
         
@@ -71,7 +87,7 @@ Evaluation Parameter:
 Generate a concise chain-of-thought explaining how this task should be evaluated using the parameter.
 """
 
-        return self._call_groq(prompt)
+        return self._call_model(prompt)
 
     # --------------------------------------------------
     # 2. Generate Likert probabilities
@@ -115,7 +131,7 @@ Format exactly like this:
 </OUTPUT>
 """
 
-        model_output = self._call_groq(prompt)
+        model_output = self._call_model(prompt)
         try:
             match = re.search(r"<OUTPUT>\s*(.*?)\s*</OUTPUT>", model_output, re.DOTALL)
             if match:
@@ -123,7 +139,8 @@ Format exactly like this:
                 model_output=extracted
         except:
             model_output=model_output.replace("<OUTPUT>",'').replace('</OUTPUT>','')
-            pass
+            extract = lambda s: {k: float(v) for k, v in re.findall(r'"(\d+)"\s*:\s*([0-9]*\.?[0-9]+)', s)}
+            model_output = extract(model_output)
 
         try:
             probs = json.loads(model_output)
@@ -131,7 +148,8 @@ Format exactly like this:
             try:
                 probs = ast.literal_eval(model_output)
             except:
-                probs = "NA"
+                print("FAILED PROBS : ",model_output)
+                return {1:1.0}
         return {int(k): float(v) for k, v in probs.items()}
 
     # --------------------------------------------------
@@ -153,7 +171,10 @@ Format exactly like this:
         question: str,
         answer: str
     ) -> float:
-        cot = self.generate_cot(task_description, evaluation_parameter)
+        if('param' in self.model_name.lower()):
+            cot =''
+        else:
+            cot = self.generate_cot(task_description, evaluation_parameter)
         probabilities = self.generate_likert_probabilities(
             task_description,
             evaluation_parameter,
@@ -166,6 +187,9 @@ Format exactly like this:
     # --------------------------------------------------
     # Internal Groq streaming call (PATCHED)
     # --------------------------------------------------
+    def _call_model(self,prompt: str) -> str:
+        pass 
+
     def _call_groq(self, prompt: str) -> str:
         completion = self.client.chat.completions.create(
             model=self.model,
@@ -189,6 +213,58 @@ Format exactly like this:
                 model_output += chunk.choices[0].delta.content
         return model_output.strip()
 
+    def _call_vllm(self, prompt: str) -> str:
+        data = {
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 2048,
+                }
+
+        resp = requests.post(self.model, json=data)
+        resp=resp.json()
+        resp=resp['choices'][0]['message']['content']
+        remove_think = lambda s: re.sub(r"<think>.*?</think>", "", s, flags=re.DOTALL)
+        resp=remove_think(resp)
+        return resp.strip()
+    
+    def _call_hf(self, prompt: str) -> str:
+        conversation = [
+            {
+                "content": "You are an expert who knows about NCERT syllabus of 10th standard for physics.",
+                "role": "system"
+            },
+            {
+                "content": prompt,
+                "role": "user"
+            }
+        ]
+
+        # padding special token
+        inputs = self.tokenizer.apply_chat_template(
+            conversation=conversation,
+            return_tensors="pt",
+            add_generation_prompt=True 
+        )
+        inputs = inputs.to(self.model.device)
+
+        # --- Generate output ---
+        with torch.no_grad():
+            output = self.model.generate(
+                inputs,
+                max_new_tokens=1024,
+                do_sample=True,
+                top_k=50,
+                top_p=0.95,
+                temperature=0.6,
+                eos_token_id=self.tokenizer.eos_token_id,
+                use_cache=False
+            )
+
+        # Get only the generated tokens (exclude the prompt length)
+        generated_tokens = output[0][inputs.shape[-1]:]
+        generated_text = self.tokenizer.decode(generated_tokens, skip_special_tokens=True)
+
+        return generated_text.strip()
+        # return resp.strip()
 
 # evaluator = GEval(
 #     likert_scale=[1, 2, 3, 4, 5]  # or [1..7]

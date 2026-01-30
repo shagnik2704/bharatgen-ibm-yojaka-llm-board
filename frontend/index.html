@@ -333,7 +333,7 @@
             <div class="space-y-6">
                 <div>
                     <label class="text-xs font-bold uppercase tracking-wider mb-2 block" style="color: var(--text-secondary);">
-                        Chairman
+                        Model
                     </label>
                     <select 
                         id="chairmanSelect" 
@@ -359,7 +359,7 @@
                     </select>
                 </div>
                 
-                <div>
+                <div class="hidden">
                     <label class="text-xs font-bold uppercase tracking-wider mb-2 block" style="color: var(--text-secondary);">
                         Board Members
                     </label>
@@ -952,10 +952,11 @@
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify({
-                            board: {
-                                chairman_model_id: currentChairman,
-                                member_model_ids: currentMembers
-                            },
+                            // board: {
+                            //     chairman_model_id: currentChairman,
+                            //     member_model_ids: currentMembers
+                            // },
+                            model_id : currentChairman,
                             language: activeLanguage,
                             depth: activeDepth,
                             subject: activeSubject,
@@ -1068,8 +1069,8 @@
         }
         function scoreBar(percent) {
             const color =
-                percent >= 4 ? 'bg-green-500' :
-                percent >= 2 ? 'bg-yellow-400' :
+                percent >= 67 ? 'bg-green-500' :
+                percent >= 34 ? 'bg-yellow-400' :
                 'bg-red-500';
 
             return `

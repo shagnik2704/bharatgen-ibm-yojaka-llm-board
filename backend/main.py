@@ -166,7 +166,7 @@
 
 #     except Exception as e:
 #         raise HTTPException(status_code=500, detail=str(e))
-
+from prompt import GUARDRAILS_PROMPT
 from GEval import GEval
 import os
 import re
@@ -254,10 +254,22 @@ except Exception as e:
     print(f"Warning: Failed to initialize Param-1-2.9B-Instruct: {e}")
     tokenizer_29 = None
     model_29 = None
-# GEval_evaluator = GEval(
-#     groq_api_key=groq_api_key,  
-#     likert_scale=[1, 2, 3, 4, 5]  # or [1..7]
-# )
+param_ncert = GEval(
+    model='bharatgenai/Param-1-2.9B-Instruct', 
+    likert_scale=[1, 2, 3, 4, 5]  # or [1..7]
+)
+llama_bloom = GEval(
+    model='http://localhost:8002/v1/chat/completions',
+    likert_scale=[1, 2, 3, 4, 5]  # or [1..7]
+)
+guardrails_qwen = GEval(
+    model='http://localhost:8001/v1/chat/completions',  
+    likert_scale=[1, 2]  # or [1..7]
+)
+verification_llama = GEval(
+    model='http://localhost:8002/v1/chat/completions',
+    likert_scale=[1, 2]  # or [1..7]
+)
 # Share clients with model_runner
 from model_runner import set_clients
 set_clients(gemini_client=gemini_client, openai_client=openai_client, groq_client=groq_client, tokenizer_29=tokenizer_29, model_29=model_29)
@@ -575,13 +587,59 @@ async def test_param_29b():
         elapsed = time.perf_counter() - t0
         return {"ok": False, "error": str(e), "elapsed_s": round(elapsed, 2)}
 
+def get_alignment_score(req,q):
+    print("===============Generating Scores============")
+    ncert_score = param_ncert.evaluate(
+        task_description=f"You are to determine whether the given question and answer pair is a standard NCERT 10th, 11th or 12th standard question or not.",
+        evaluation_parameter="You to rate how well it is aligned on a scale of 1 to 5. A score of 1 indicates low alignemtn while a score of 5 indicates high alignment.",
+        question=q['question'],
+        answer=''
+    )
+    
+    validity_score = verification_llama.evaluate(
+        task_description=f"You are to determine whether the given question and answer pair is valid or not. Try to solve the question without looking at the answer and then verify with the given answer.",
+        evaluation_parameter="You have to rate its correctness level on a scale of 1 to 2. A score of 1 indicates incorrect question while a score of 2 indicates correct question.",
+        question=q['question'],
+        answer=''
+    )
 
+    
+    guardrail_score = guardrails_qwen.evaluate(
+        task_description=GUARDRAILS_PROMPT,
+        evaluation_parameter="You to rate whether the question is appropriate or not on a scale of 1 to 2. A score of 1 indicates inappropriateness while a score of 2 indicates appropriate question.",
+        question=q['question'],
+        answer=q['answer']
+    )
+
+    bloom_score = llama_bloom.evaluate(
+        task_description=f'''You are to evaluate the Bloom's taxonomy alignment of a question. 
+Remember : recall facts
+Understand : explain in your own words
+Apply : use in a practical example
+Analyze : break down and compare
+Evaluate : justify a judgment
+Create : design something new
+
+The provided bloom level is {req.depth}.''',
+        evaluation_parameter="You to rate how well it is aligned on a scale of 1 to 5. A score of 1 indicates low alignemtn while a score of 5 indicates high alignment.",
+        question=q['question'],
+        answer=q['answer']
+    )
+
+    print(f"===============Done generating Scores====Bloom : {bloom_score}==NCERT : {ncert_score}=Guard : {guardrail_score}=Validity : {validity_score}====")
+    return {
+        'bloom':bloom_score,
+        'ncert': ncert_score,
+        'guard': guardrail_score,
+        'validity':validity_score
+        }
 @app.post("/ask")
 async def ask_llm(req: QueryRequest):
     """
     Question generation endpoint with LLM Board support.
     If board config is provided, uses council flow. Otherwise falls back to single model.
     """
+    print(req)
     try:
         # Determine if we should use board flow
         if req.board:
@@ -643,40 +701,12 @@ async def ask_llm(req: QueryRequest):
                     q["source_text"] = source_chunks
                 if source_meta:
                     q["source_meta"] = {"pdf_path": source_meta.get("source_path"), "page": source_meta.get("page")}
-                
-                GEval_evaluator = GEval(
-                    groq_api_key=groq_api_key,  
-                    model = req.board.chairman_model_id,
-                    likert_scale=[1, 2, 3, 4, 5]  # or [1..7]
-                )
-                
-                theme_score = GEval_evaluator.evaluate(
-                    task_description=f"You are to evaluate the thematic alignment of a question. The provided theme is {req.theme}.",
-                    evaluation_parameter="You to rate how well it is aligned on a scale of 1 to 5. A score of 1 indicates low alignemtn while a score of 5 indicates high alignment.",
-                    question=q['question'],
-                    answer=q['answer']
-                )
 
-                topic_score = GEval_evaluator.evaluate(
-                    task_description=f"You are to evaluate the topic alignment of a question. The provided topic is {req.chapter}.",
-                    evaluation_parameter="You to rate how well it is aligned on a scale of 1 to 5. A score of 1 indicates low alignemtn while a score of 5 indicates high alignment.",
-                    question=q['question'],
-                    answer=q['answer']
-                )
-
-                dok_score = GEval_evaluator.evaluate(
-                    task_description=f'''You are to evaluate the Depth of Knowledge alignment of a question. 
-                DOK 1: Recall & Reproduction
-                DOK 2: Skills & Concepts
-                DOK 3: Strategic Thinking
-                DOK 4: Extended Thinking
-
-                The provided dok level is {req.depth}.''',
-                    evaluation_parameter="You to rate how well it is aligned on a scale of 1 to 5. A score of 1 indicates low alignemtn while a score of 5 indicates high alignment.",
-                    question=q['question'],
-                    answer=q['answer']
-                )
-                q['alignment_score']=round((theme_score+topic_score+dok_score)/3,2)
+                scores=get_alignment_score(req,q)
+                if(scores['guard']<=1.5 or scores['validity']<=1.5):
+                    q['alignment_score']=0.0
+                else:
+                    q['alignment_score']=round((scores['ncert']+scores['bloom'])/3,2)
             
             print(f"Council flow completed. Generated {len(questions)} questions.\n")
             print(questions)
@@ -788,10 +818,17 @@ async def ask_llm(req: QueryRequest):
             print(raw_output + "\n")
             questions = parse_ai_output(raw_output)
             for q in questions:
+                scores=get_alignment_score(req,q)
+                print(scores)
+                if(scores['guard']<=1.5 or scores['validity']<=1.5):
+                    q['alignment_score']=0.1
+                else:
+                    q['alignment_score']=round((scores['ncert']+scores['bloom'])/3,2)
                 if source_text_attach:
                     q["source_text"] = source_text_attach
                 if source_meta_attach:
                     q["source_meta"] = source_meta_attach
+            print(questions)
             return questions
         else:
             raise HTTPException(
