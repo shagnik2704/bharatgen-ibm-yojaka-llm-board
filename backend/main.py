@@ -166,8 +166,8 @@
 
 #     except Exception as e:
 #         raise HTTPException(status_code=500, detail=str(e))
-
-
+from prompt import GUARDRAILS_PROMPT
+from GEval import GEval
 import os
 import re
 import traceback
@@ -203,6 +203,13 @@ try:
 except ImportError:
     print("Warning: Groq library not installed. Install with: pip install groq")
     groq_client = None
+
+# GEval instances for alignment scoring (require separate vLLM server on 8002 or set GEVAL_MODEL_URL)
+_geval_url = os.getenv("GEVAL_MODEL_URL", "http://localhost:8002/v1/chat/completions")
+param_ncert = GEval(model=_geval_url, likert_scale=[1, 2, 3, 4, 5])
+llama_bloom = GEval(model=_geval_url, likert_scale=[1, 2, 3, 4, 5])
+guardrails_qwen = GEval(model=_geval_url, likert_scale=[1, 2])
+verification_llama = GEval(model=_geval_url, likert_scale=[1, 2])
 
 # Share Groq client with model_runner
 from model_runner import set_clients
@@ -463,7 +470,7 @@ async def list_chapters(subject: str, language: str = "en"):
     manifest_path = (BASE_DIR.parent / "indexes" / language / "chapters_manifest.json").resolve()
     if not manifest_path.exists():
         return {"chapters": []}
-
+    print(manifest_path)
     try:
         data = json.loads(manifest_path.read_text(encoding="utf-8"))
         chapters = data.get(subject, [])
@@ -481,13 +488,58 @@ async def health_check():
     """
     return {"ok": groq_client is not None, "message": "Groq-only mode"}
 
+def get_alignment_score(req,q):
+    print("===============Generating Scores============")
+    ncert_score = param_ncert.evaluate(
+        task_description=f"You are to determine whether the given question and answer pair is a standard NCERT 10th, 11th or 12th standard question or not.",
+        evaluation_parameter="You to rate how well it is aligned on a scale of 1 to 5. A score of 1 indicates low alignemtn while a score of 5 indicates high alignment.",
+        question=q['question'],
+        answer=''
+    )
+    
+    validity_score = verification_llama.evaluate(
+        task_description=f"You are to determine whether the given question and answer pair is valid or not. Try to solve the question without looking at the answer and then verify with the given answer.",
+        evaluation_parameter="You have to rate its correctness level on a scale of 1 to 2. A score of 1 indicates incorrect question while a score of 2 indicates correct question.",
+        question=q['question'],
+        answer=''
+    )
 
+    
+    guardrail_score = guardrails_qwen.evaluate(
+        task_description=GUARDRAILS_PROMPT,
+        evaluation_parameter="You to rate whether the question is appropriate or not on a scale of 1 to 2. A score of 1 indicates inappropriateness while a score of 2 indicates appropriate question.",
+        question=q['question'],
+        answer=q['answer']
+    )
+
+    bloom_score = llama_bloom.evaluate(
+        task_description=f'''You are to evaluate the DoK level alignment of a question. 
+        You must adhere to the following definitions for the requested DEPTH:
+        - DOK 1 (Recall/Remember): Recall of a fact, term, or property. (e.g., Define, List, State)
+        - DOK 2 (Skills & Concepts/Understand & Apply): Use of information or conceptual knowledge. (e.g., Describe, Classify, Solve routine problems)
+        - DOK 3 (Strategic Thinking/Analyze & Evaluate): Reasoning, planning, and using evidence. (e.g., Explain why, Non-routine problem solving, Compare/Contrast phenomena)
+        - DOK 4 (Extended Thinking/Create): Complex synthesis and connection across chapters. (e.g., Create a model, Design an experiment, Critique a theoretical framework)
+
+The provided bloom level is {req.depth}.''',
+        evaluation_parameter="You to rate how well it is aligned on a scale of 1 to 5. A score of 1 indicates low alignemtn while a score of 5 indicates high alignment.",
+        question=q['question'],
+        answer=q['answer']
+    )
+
+    print(f"===============Done generating Scores====Bloom : {bloom_score}==NCERT : {ncert_score}=Guard : {guardrail_score}=Validity : {validity_score}====")
+    return {
+        'bloom':bloom_score,
+        'ncert': ncert_score,
+        'guard': guardrail_score,
+        'validity':validity_score
+        }
 @app.post("/ask")
 async def ask_llm(req: QueryRequest):
     """
     Question generation endpoint with LLM Board support.
     If board config is provided, uses council flow. Otherwise falls back to single model.
     """
+    print(req)
     try:
         # Determine if we should use board flow
         if req.board:
@@ -543,8 +595,15 @@ async def ask_llm(req: QueryRequest):
                     q["source_text"] = source_chunks
                 if source_meta:
                     q["source_meta"] = {"pdf_path": source_meta.get("source_path"), "page": source_meta.get("page")}
+
+                scores=get_alignment_score(req,q)
+                if(scores['guard']<1.5 or scores['validity']<1.5):
+                    q['alignment_score']=0.0
+                else:
+                    q['alignment_score']=round((scores['ncert']+scores['bloom'])/3,2)
             
             print(f"Council flow completed. Generated {len(questions)} questions.\n")
+            print(questions)
             return questions
         
         # Fallback to single model (backward compatibility)
@@ -653,10 +712,19 @@ async def ask_llm(req: QueryRequest):
             print(raw_output + "\n")
             questions = parse_ai_output(raw_output)
             for q in questions:
+                scores=get_alignment_score(req,q)
+                print(scores)
+                if(scores['guard']<=1.5 or scores['validity']<=1.5):
+                    q['alignment_score']=0.1
+                    q['question']='Oops! We can\'t show this question. Try another one 😊'
+                    q['answer']='NA'
+                else:
+                    q['alignment_score']=round((scores['ncert']+scores['bloom'])/2,2)
                 if source_text_attach:
                     q["source_text"] = source_text_attach
                 if source_meta_attach:
                     q["source_meta"] = source_meta_attach
+            print(questions)
             return questions
         else:
             print("[ /ask ] 400: Either 'board' or 'model_id' must be provided")
