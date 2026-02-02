@@ -1668,14 +1668,6 @@
 
             if(typeRequests.length === 0) return alert("Enter number of questions for at least one type.");
 
-            // Board validation: avoid 400 from backend
-            if (currentMembers.length === 0) {
-                return alert("Select at least one board member. The chairman cannot be the only model.");
-            }
-            if (currentMembers.includes(currentChairman)) {
-                return alert("Chairman model cannot be in the member list. Choose a different chairman or members.");
-            }
-
             allQuestions = []; cursor = 0;
             btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> GENERATING...';
             btn.disabled = true;

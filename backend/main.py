@@ -204,12 +204,12 @@ except ImportError:
     print("Warning: Groq library not installed. Install with: pip install groq")
     groq_client = None
 
-# GEval instances for alignment scoring (require separate vLLM server on 8002 or set GEVAL_MODEL_URL)
-_geval_url = os.getenv("GEVAL_MODEL_URL", "http://localhost:8002/v1/chat/completions")
-param_ncert = GEval(model=_geval_url, likert_scale=[1, 2, 3, 4, 5])
-llama_bloom = GEval(model=_geval_url, likert_scale=[1, 2, 3, 4, 5])
-guardrails_qwen = GEval(model=_geval_url, likert_scale=[1, 2])
-verification_llama = GEval(model=_geval_url, likert_scale=[1, 2])
+# GEval instances for alignment scoring - use Groq by default
+_geval_model = os.getenv("GEVAL_MODEL", "groq-llama-8b")
+param_ncert = GEval(model=_geval_model, groq_api_key=groq_api_key or "", likert_scale=[1, 2, 3, 4, 5])
+llama_bloom = GEval(model=_geval_model, groq_api_key=groq_api_key or "", likert_scale=[1, 2, 3, 4, 5])
+guardrails_qwen = GEval(model=_geval_model, groq_api_key=groq_api_key or "", likert_scale=[1, 2])
+verification_llama = GEval(model=_geval_model, groq_api_key=groq_api_key or "", likert_scale=[1, 2])
 
 # Share Groq client with model_runner
 from model_runner import set_clients
