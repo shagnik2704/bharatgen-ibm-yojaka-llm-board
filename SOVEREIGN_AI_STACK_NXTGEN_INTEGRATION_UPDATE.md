@@ -5,6 +5,8 @@
 **Date:** 2 February 2026  
 **Re:** Integration questions – API, parameters, conversation limits, and repository
 
+**Current configuration:** Groq-only models; theme selector removed from UI (default `"general"`).
+
 ---
 
 ## 1. API Integration: Same API or Bridge/Middleware?
@@ -12,8 +14,9 @@
 **Answer:** There is a **bridge/middleware API**, not the raw AMITH API.
 
 The BharatGen application exposes its own REST API that:
-- Accepts additional parameters such as **subject**, **chapter**, **theme**, **depth**, **qType**, **language**, and board configuration
-- Internally orchestrates LLM backends (Groq, Param, etc.) and the RAG pipeline
+- Accepts parameters such as **subject**, **chapter**, **depth**, **qType**, **language**, and board configuration
+- Uses **Groq models only** (Llama, GPT OSS variants) – no local/Param models
+- Optionally accepts **theme** (default: `"general"`) for RAG retrieval – not shown in UI
 - Returns structured JSON responses suitable for the chat/explore UI
 
 NxtGen’s chat page should integrate with **this BharatGen backend API**, not the underlying LLM provider APIs directly.
@@ -24,7 +27,7 @@ NxtGen’s chat page should integrate with **this BharatGen backend API**, not t
 
 ### A. Question Generation: `POST /ask`
 
-Generates NCERT-aligned questions with subject, theme, chapter, etc.
+Generates NCERT-aligned questions with subject, chapter, etc. Uses Groq models only.
 
 **Request Body (JSON):**
 
@@ -38,11 +41,12 @@ Generates NCERT-aligned questions with subject, theme, chapter, etc.
   "depth": "DOK level 1: Recall & Reproduction",
   "subject": "Physics",
   "chapter": "Motion in a Straight Line",
-  "theme": "cricket",
   "qType": "Multiple Choice (MCQ)",
   "num_questions": 2
 }
 ```
+
+**Note:** `theme` is optional (default `"general"`). Used for RAG retrieval; omit or set to `"general"` unless a specific theme (e.g. cricket, IPL) is needed.
 
 **cURL example:**
 
@@ -58,7 +62,6 @@ curl -X POST "https://<BASE_URL>/ask" \
     "depth": "DOK level 1: Recall & Reproduction",
     "subject": "Physics",
     "chapter": "Motion in a Straight Line",
-    "theme": "cricket",
     "qType": "Multiple Choice (MCQ)",
     "num_questions": 2
   }'
@@ -76,7 +79,7 @@ For the **chat page** – answers grounded in a given source chunk. Supports mul
 
 ```json
 {
-  "chunk_text": "The source material text (topic chunk + theme chunk from RAG retrieval)...",
+  "chunk_text": "The source material text (topic chunk + theme chunk from RAG retrieval, if any)...",
   "pdf_path": "English/Physics/Class-11/English_Physics_Class-11.pdf",
   "page": 5,
   "messages": [
@@ -146,8 +149,10 @@ Practical limits come from:
 
 | API | Parameters |
 |-----|------------|
-| **POST /ask** | `board` (chairman_model_id, member_model_ids), `language`, `depth`, `subject`, `chapter`, `theme`, `qType`, `num_questions` |
+| **POST /ask** | `board` (chairman_model_id, member_model_ids), `language`, `depth`, `subject`, `chapter`, `qType`, `num_questions`; `theme` optional (default `"general"`) |
 | **POST /explore/chat** | `chunk_text`, `pdf_path`, `page`, `messages` |
+
+**Available Groq models:** `groq-llama-8b`, `groq-llama-70b`, `rag-piped-groq-70b`, `groq-llama-guard`, `groq-gpt-oss-120b`, `groq-gpt-oss-20b`
 
 The `/ask` API also supports single-model mode with `model_id` instead of `board` for backward compatibility.
 
@@ -176,17 +181,18 @@ The final repo URL and deployment target for NxtGen infra should be confirmed be
 - **GET /explore.html** – Serves the Explore/Chat UI
 - **GET /chapters?subject=&language=** – Returns chapter names for a subject (en/hi)
 - **GET /api/pdf?path=** – Serves PDF files from the books root
-- **GET /test-param-2.9b** – Health check for Param 2.9B model
+- **GET /health** – Health check; returns `{"ok": true, "message": "Groq-only mode"}` when Groq client is initialized
 
 ---
 
 ## 8. Environment Configuration
 
 The backend requires:
-- `GROQ_API_KEY` (for Groq models used in explore chat and board)
-- `GEMINI_API_KEY_21`, `OPENAI_API_KEY` (optional, for other models)
-- `BHARATGEN_BOOKS_PATH` (optional) – path to NCERT PDFs
-- `EXPLORE_CHAT_MODEL` (optional) – default `groq-llama-8b` for explore/chat
+- **`GROQ_API_KEY`** (required) – for all Groq models (question generation and explore/chat)
+
+Optional:
+- `BHARATGEN_BOOKS_PATH` – path to NCERT PDFs (default: project `books/` or `data/`)
+- `EXPLORE_CHAT_MODEL` – model for explore/chat (default: `groq-llama-8b`)
 
 ---
 

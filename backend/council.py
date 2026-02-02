@@ -1,21 +1,11 @@
 """
 LLM Council module - implements the three-stage board flow for collaborative question generation.
 Inspired by karpathy/llm-council but adapted for question generation domain.
-
-When the chairman is Param (param-1-2.9b-instruct / rag-piped-param-instruct), a different flow is used:
-Param-as-orchestrator: members generate one question each; Param only selects the best one.
-This avoids Param's limitations on long-form generation.
+Uses Groq models only.
 """
 import asyncio
 from typing import List, Dict, Optional, Tuple
 from model_runner import run_model, needs_rag, get_rag_context
-
-# Param models used as chairman only orchestrate (members generate, Param selects).
-PARAM_ORCHESTRATOR_IDS = ("param-1-2.9b-instruct", "rag-piped-param-instruct")
-
-def is_param_orchestrator(model_id: str) -> bool:
-    """True if this model should act as chairman-orchestrator (collect from members, not generate)."""
-    return model_id in PARAM_ORCHESTRATOR_IDS
 
 
 def build_member_generate_one_prompt(subject: str, chapter: str, theme: str, qType: str,
@@ -268,53 +258,6 @@ def build_chairman_synthesis_prompt(subject: str, chapter: str, theme: str, qTyp
     return prompt
 
 
-def build_param_select_one_prompt(member_outputs: List[str]) -> str:
-    """Build a short prompt for Param (chairman) to select the best one from member-generated questions."""
-    parts = []
-    for i, out in enumerate(member_outputs):
-        parts.append(f"### Board Member {chr(65 + i)} question:\n{out}\n")
-    return (
-        "### ROLE\n"
-        "You are the Chairman of an LLM Board. Your board members have each submitted one question. "
-        "Your task is to select the single best question and output it exactly as given (do not rewrite).\n\n"
-        "### BOARD MEMBER SUBMISSIONS\n"
-        + "\n".join(parts) +
-        "\n### YOUR TASK\n"
-        "Output the single best question in this exact format (copy one member's block):\n"
-        "<Question>\n[question text]\n</Question>\n"
-        "<Answer>\n[answer text]\n</Answer>\n"
-        "If in doubt, choose the first member's question. Output nothing else."
-    )
-
-def build_param_verify_and_select_prompt(language: str, topic_chunk: str, theme_chunk: str, member_outputs: List[str]) -> str:
-    """
-    Prompt Param to verify faithfulness to retrieved context (en/hi) and select the best Q&A.
-    Keeps Param's generation short: choose and copy one member block.
-    """
-    lang = (language or "en").lower()
-    lang_hint = "English" if lang == "en" else "Hindi"
-
-    parts = []
-    for i, out in enumerate(member_outputs):
-        parts.append(f"### Board Member {chr(65 + i)} submission:\n{out}\n")
-
-    return (
-        "### ROLE\n"
-        "You are the Chairman of an LLM Board. Your job is to verify which submission is most faithful to the provided source material "
-        f"({lang_hint}) and then select the best one.\n\n"
-        "### SOURCE MATERIAL (RAG CONTEXT)\n"
-        f"{topic_chunk}\n\n"
-        "### OPTIONAL THEME CONTEXT\n"
-        f"{theme_chunk}\n\n"
-        "### BOARD MEMBER SUBMISSIONS\n"
-        + "\n".join(parts) +
-        "\n### YOUR TASK\n"
-        "1. Pick the ONE submission that is most on-topic and factually supported by the source material.\n"
-        "2. Output ONLY that chosen submission, copied verbatim, in the exact format:\n"
-        "<Question>\n...\n</Question>\n<Answer>\n...\n</Answer>\n\n"
-        "If none are clearly supported, choose the first submission. Output nothing else."
-    )
-
 def parse_member_review(raw_output: str) -> Dict:
     """Parse a board member's review output to extract rating, feedback, and alternative."""
     import re
@@ -344,95 +287,20 @@ def parse_member_review(raw_output: str) -> Dict:
     }
 
 
-async def run_param_orchestrator_flow(chairman_model_id: str, member_model_ids: List[str],
-                                       language: str,
-                                       subject: str, chapter: str, theme: str, qType: str,
-                                       depth: str) -> Dict:
-    """
-    Param-as-orchestrator: members each generate one question; Param (chairman) only selects the best.
-    Always generates 1 question. Param does not generate content—only picks from member outputs.
-    """
-    language = (language or "en").lower()
-    # Always retrieve RAG context for Param orchestration (used for member grounding + Param verification)
-    loop = asyncio.get_event_loop()
-    topic_chunk, theme_chunk, topic_meta, theme_meta = await loop.run_in_executor(
-        None,
-        lambda: get_rag_context(chapter, theme, language=language)
-    )
-    max_chunk = 800
-    if topic_chunk and len(topic_chunk) > max_chunk:
-        topic_chunk = topic_chunk[:max_chunk] + "... [truncated]"
-    if theme_chunk and len(theme_chunk) > max_chunk:
-        theme_chunk = theme_chunk[:max_chunk] + "... [truncated]"
-
-    # All members generate from the same grounded prompt (1 question only)
-    member_prompt = build_member_generate_one_prompt(
-        subject, chapter, theme, qType, depth, language, topic_chunk=topic_chunk, theme_chunk=theme_chunk
-    )
-
-    # Stage 1: Each member generates one question (parallel)
-    member_tasks = []
-    for mid in member_model_ids:
-        member_tasks.append(run_model(mid, member_prompt, None))
-    member_outputs = await asyncio.gather(*member_tasks)
-
-    # Stage 2: Param verifies against source and selects the best one
-    verify_select_prompt = build_param_verify_and_select_prompt(
-        language=language,
-        topic_chunk=topic_chunk or "",
-        theme_chunk=theme_chunk or "",
-        member_outputs=member_outputs
-    )
-    final_output = await run_model(chairman_model_id, verify_select_prompt, None)
-
-    # Member "opinions" for API compatibility: treat each member output as their submission
-    member_opinions = [
-        {"model_id": mid, "rating": None, "feedback": out, "alternative": "None", "raw_output": out}
-        for mid, out in zip(member_model_ids, member_outputs)
-    ]
-
-    source_meta = None
-    if topic_meta and len(topic_meta) > 0 and topic_meta[0]:
-        source_meta = topic_meta[0]
-    elif theme_meta and len(theme_meta) > 0 and theme_meta[0]:
-        source_meta = theme_meta[0]
-    return {
-        "chairman_proposal": "[Param orchestrator: retrieved context, members generated, chairman verified+selected one.]",
-        "member_opinions": member_opinions,
-        "final_output": final_output,
-        "source_chunks": {"topic_chunk": topic_chunk, "theme_chunk": theme_chunk},
-        "source_meta": source_meta,
-    }
-
-
 async def run_council_flow(chairman_model_id: str, member_model_ids: List[str],
                           language: str,
                           subject: str, chapter: str, theme: str, qType: str,
                           depth: str, num_questions: int) -> Dict:
     """
-    Execute the three-stage council flow for question generation.
-    When chairman is Param (param-1-2.9b-instruct / rag-piped-param-instruct), uses Param-as-orchestrator
-    flow instead: members generate one question each, Param selects the best (1 question only).
+    Execute the three-stage council flow for question generation (Groq models only).
+    Chairman proposes -> Members review -> Chairman synthesizes.
     
     Returns:
         Dictionary with:
-        - chairman_proposal: Original proposal text (or orchestrator message)
-        - member_opinions: List of member reviews or submissions
+        - chairman_proposal: Original proposal text
+        - member_opinions: List of member reviews
         - final_output: Raw synthesis/output
     """
-    # Param as chairman: use orchestrator flow (1 question, members generate, Param selects)
-    if is_param_orchestrator(chairman_model_id) and member_model_ids:
-        return await run_param_orchestrator_flow(
-            chairman_model_id=chairman_model_id,
-            member_model_ids=member_model_ids,
-            language=language,
-            subject=subject,
-            chapter=chapter,
-            theme=theme,
-            qType=qType,
-            depth=depth
-        )
-
     # Check if any model needs RAG
     needs_rag_context = needs_rag(chairman_model_id) or any(needs_rag(mid) for mid in member_model_ids)
     

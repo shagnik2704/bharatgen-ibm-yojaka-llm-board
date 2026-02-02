@@ -172,92 +172,41 @@ import os
 import re
 import traceback
 import json
-import ollama
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from pathlib import Path
-from google import genai
-from openai import OpenAI
 from dotenv import load_dotenv
 import ncert_rag_pipe.main as ncert_rag
-from transformers import BitsAndBytesConfig
 from typing import List, Optional
-from transformers import AutoTokenizer, AutoModelForCausalLM
-import torch
-from model_runner import run_model, needs_rag, get_rag_context, initialize_clients
-from council import run_council_flow, is_param_orchestrator
-
-print(f"Is CUDA available? {torch.cuda.is_available()}")
-print(f"Current device: {torch.cuda.current_device()}")
-print(f"Device name: {torch.cuda.get_device_name(0)}")
+from model_runner import run_model, needs_rag, get_rag_context
+from council import run_council_flow
 
 load_dotenv()
 app = FastAPI()
 BASE_DIR = Path(__file__).resolve().parent
 
-# Initialize clients (handle missing API keys gracefully)
-gemini_api_key = os.getenv("GEMINI_API_KEY_21")
-openai_api_key = os.getenv("OPENAI_API_KEY")
+# Initialize Groq client only
 groq_api_key = os.getenv("GROQ_API_KEY")
-
-gemini_client = None
-openai_client = None
 groq_client = None
-
-if gemini_api_key:
-    try:
-        gemini_client = genai.Client(api_key=gemini_api_key)
-    except Exception as e:
-        print(f"Warning: Failed to initialize Gemini client: {e}")
-        gemini_client = None
-
-if openai_api_key:
-    try:
-        openai_client = OpenAI(api_key=openai_api_key)
-    except Exception as e:
-        print(f"Warning: Failed to initialize OpenAI client: {e}")
-        openai_client = None
-
-# Initialize Groq client (optional)
 try:
     from groq import Groq
     if groq_api_key:
         try:
             groq_client = Groq(api_key=groq_api_key)
+            print("Groq client initialized successfully")
         except Exception as e:
             print(f"Warning: Failed to initialize Groq client: {e}")
             groq_client = None
+    else:
+        print("Warning: GROQ_API_KEY not set. Groq models will not work.")
 except ImportError:
     print("Warning: Groq library not installed. Install with: pip install groq")
     groq_client = None
 
-# Initialize Param-1-2.9B-Instruct
-tokenizer_29 = None
-model_29 = None
-model_29_id = os.getenv("PARAM1_2_9B_INSTRUCT_MODEL", "bharatgenai/Param-1-2.9B-Instruct")
-use_4bit = os.getenv("PARAM_2_9B_4BIT", "").lower() in ("1", "true", "yes")
-try:
-    print(f"Loading Param-1-2.9B-Instruct from: {model_29_id}")
-    tokenizer_29 = AutoTokenizer.from_pretrained(model_29_id, trust_remote_code=False)
-    load_kw = {"device_map": "auto", "trust_remote_code": True}
-    if use_4bit:
-        from transformers import BitsAndBytesConfig
-        load_kw["quantization_config"] = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_compute_dtype=torch.bfloat16,
-            bnb_4bit_quant_type="nf4",
-        )
-    model_29 = AutoModelForCausalLM.from_pretrained(model_29_id, **load_kw)
-    print("Successfully loaded Param-1-2.9B-Instruct")
-except Exception as e:
-    print(f"Warning: Failed to initialize Param-1-2.9B-Instruct: {e}")
-    tokenizer_29 = None
-    model_29 = None
-
-# Share clients with model_runner
+# Share Groq client with model_runner
 from model_runner import set_clients
-set_clients(gemini_client=gemini_client, openai_client=openai_client, groq_client=groq_client, tokenizer_29=tokenizer_29, model_29=model_29)
+set_clients(groq_client=groq_client)
 
 
 
@@ -334,7 +283,7 @@ class QueryRequest(BaseModel):
     depth: str
     subject: str
     chapter: str
-    theme: str
+    theme: str = "general"
     qType: str
     num_questions: int
     # Board configuration (required for new flow)
@@ -525,52 +474,12 @@ async def list_chapters(subject: str, language: str = "en"):
         raise HTTPException(status_code=500, detail=f"Failed to read chapters manifest: {e}")
 
 
-@app.get("/test-param")
-async def test_param():
+@app.get("/health")
+async def health_check():
     """
-    Minimal health check for Param-1-2.9B-Instruct generation.
-    Uses the already-loaded model; runs a tiny prompt (max_new_tokens=10).
-    Returns { "ok": true, "output": "...", "elapsed_s": float } or { "ok": false, "error": "..." }.
+    Health check endpoint. Returns ok if Groq client is initialized.
     """
-    import time
-    from model_runner import _tokenizer_29, _model_29
-    
-    if _tokenizer_29 is None or _model_29 is None:
-        return {"ok": False, "error": "Param-1-2.9B-Instruct model not loaded. Ensure transformers can fetch bharatgenai/Param-1-2.9B-Instruct."}
-
-    prompt = "Say hello in one word."
-    t0 = time.perf_counter()
-    try:
-        out = await run_model("param-1-2.9b-instruct", prompt, None)
-        elapsed = time.perf_counter() - t0
-        return {"ok": True, "output": out, "elapsed_s": round(elapsed, 2)}
-    except Exception as e:
-        elapsed = time.perf_counter() - t0
-        return {"ok": False, "error": str(e), "elapsed_s": round(elapsed, 2)}
-
-
-@app.get("/test-param-2.9b")
-async def test_param_29b():
-    """
-    Minimal health check for Param-1-2.9B-Instruct (bharatgenai/Param-1-2.9B-Instruct).
-    Runs a tiny chat-format prompt. Returns { "ok": true, "output": "...", "elapsed_s": float } or { "ok": false, "error": "..." }.
-    """
-    import time
-    from model_runner import initialize_clients, _tokenizer_29, _model_29
-
-    initialize_clients()
-    if _tokenizer_29 is None or _model_29 is None:
-        return {"ok": False, "error": "Param-1-2.9B-Instruct failed to load. Set PARAM1_2_9B_INSTRUCT_MODEL (optional) and ensure transformers can fetch bharatgenai/Param-1-2.9B-Instruct."}
-
-    prompt = "Say hello in one word."
-    t0 = time.perf_counter()
-    try:
-        out = await run_model("param-1-2.9b-instruct", prompt, None)
-        elapsed = time.perf_counter() - t0
-        return {"ok": True, "output": out, "elapsed_s": round(elapsed, 2)}
-    except Exception as e:
-        elapsed = time.perf_counter() - t0
-        return {"ok": False, "error": str(e), "elapsed_s": round(elapsed, 2)}
+    return {"ok": groq_client is not None, "message": "Groq-only mode"}
 
 
 @app.post("/ask")
@@ -611,21 +520,13 @@ async def ask_llm(req: QueryRequest):
             
             # Parse final output to get questions
             questions = parse_ai_output(council_result["final_output"])
-            # Fallback when synthesis didn't parse: Param uses first member's question; others use chairman proposal
+            # Fallback when synthesis didn't parse: use chairman's proposal
             if not questions:
-                if is_param_orchestrator(req.board.chairman_model_id):
-                    member_opinions = council_result.get("member_opinions") or []
-                    if member_opinions and member_opinions[0].get("raw_output"):
-                        questions = parse_ai_output(member_opinions[0]["raw_output"])
-                        if questions:
-                            print("[Param orchestrator] Using first member's question as fallback (chairman output did not parse).")
-                else:
-                    # e.g. 70B chairman + 8B member: use chairman's proposal if synthesis didn't parse
-                    chairman_proposal = council_result.get("chairman_proposal") or ""
-                    if chairman_proposal:
-                        questions = parse_ai_output(chairman_proposal)
-                        if questions:
-                            print("[Council] Using chairman proposal as fallback (synthesis output did not parse).")
+                chairman_proposal = council_result.get("chairman_proposal") or ""
+                if chairman_proposal:
+                    questions = parse_ai_output(chairman_proposal)
+                    if questions:
+                        print("[Council] Using chairman proposal as fallback (synthesis output did not parse).")
             
             # Add board metadata and source text/meta to each question
             source_chunks = council_result.get("source_chunks")

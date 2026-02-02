@@ -308,7 +308,7 @@
             class="text-sm leading-relaxed"
             style="color: var(--text-secondary);"
         >
-            Select a theme and generate questions to see the reference context here.
+            Select subject and chapter, then generate questions to see the reference context here.
         </div>
     </div>
 
@@ -340,22 +340,12 @@
                         class="w-full rounded-xl p-4 text-sm outline-none transition-all"
                         style="background: var(--bg-secondary); border: 1px solid var(--card-border); color: var(--text-primary);"
                     >
-                        <!-- Temporarily disabled: non-Groq options -->
-                        <!-- <option value="gemini">Google Gemini 3</option> -->
-                        <!-- <option value="chatgpt">OpenAI GPT-4o</option> -->
                         <option value="groq-llama-8b">Groq Llama 3.1 8B Instant</option>
                         <option value="groq-llama-70b">Groq Llama 3.3 70B Versatile</option>
                         <option value="rag-piped-groq-70b">RAG-Piped Groq Llama 70B</option>
                         <option value="groq-llama-guard">Groq Llama Guard 4 12B</option>
                         <option value="groq-gpt-oss-120b">Groq GPT OSS 120B</option>
                         <option value="groq-gpt-oss-20b">Groq GPT OSS 20B</option>
-                        <!-- Temporarily disabled: non-Groq options -->
-                        <!-- <option value="local-llama">Local Llama 3</option> -->
-                        <!-- <option value="qwen">Qwen 2.5</option> -->
-                        <!-- <option value="granite3.3:8b">IBM Granite 3</option> -->
-                        <!-- <option value="rag-piped-llama">RAG-Piped Llama</option> -->
-                        <option value="param-1-2.9b-instruct">Param 1 2.9B Instruct</option>
-                        <option value="rag-piped-param-instruct">RAG-Piped Param 2.9B Instruct</option>
                     </select>
                 </div>
                 
@@ -426,16 +416,6 @@
                         class="w-full rounded-2xl p-4 text-sm outline-none transition-all"
                     >
                         <option value="">Select Subject First</option>
-                    </select>
-                    <select 
-                        id="themeDropdown" 
-                        class="w-full rounded-2xl p-4 text-sm outline-none transition-all"
-                    >
-                        <option value="">Select Theme</option>
-                        <option value="cricket">cricket</option>
-                        <option value="IPL">IPL</option>
-                        <option value="football">football</option>
-                        <option value="Interstellar movie">Interstellar movie</option>
                     </select>
                 </div>
 
@@ -726,24 +706,13 @@
         let currentChairman = "groq-llama-70b"; // Temporarily set to Groq default
         let currentMembers = ["groq-llama-8b"]; // Temporarily set to Groq default
         
-        // Temporarily filtered to only Groq models
         const availableModels = [
-            // Temporarily disabled: non-Groq options
-            // { id: "gemini", name: "Google Gemini 3" },
-            // { id: "chatgpt", name: "OpenAI GPT-4o" },
             { id: "groq-llama-8b", name: "Groq Llama 3.1 8B Instant" },
             { id: "groq-llama-70b", name: "Groq Llama 3.3 70B Versatile" },
             { id: "rag-piped-groq-70b", name: "RAG-Piped Groq Llama 70B" },
             { id: "groq-llama-guard", name: "Groq Llama Guard 4 12B" },
             { id: "groq-gpt-oss-120b", name: "Groq GPT OSS 120B" },
-            { id: "groq-gpt-oss-20b", name: "Groq GPT OSS 20B" },
-            // Temporarily disabled: non-Groq options
-            // { id: "local-llama", name: "Local Llama 3" },
-            // { id: "qwen", name: "Qwen 2.5" },
-            // { id: "granite3.3:8b", name: "IBM Granite 3" },
-            // { id: "rag-piped-llama", name: "RAG-Piped Llama" },
-            { id: "param-1-2.9b-instruct", name: "Param 1 2.9B Instruct" },
-            { id: "rag-piped-param-instruct", name: "RAG-Piped Param 2.9B Instruct" }
+            { id: "groq-gpt-oss-20b", name: "Groq GPT OSS 20B" }
         ];
         
         // Initialize member checkboxes
@@ -751,10 +720,6 @@
             const container = document.getElementById('memberCheckboxes');
             container.innerHTML = '';
             availableModels.forEach(model => {
-                // Param models are orchestrators only – they should not act as members/generators
-                if (model.id === "param-1-2.9b-instruct" || model.id === "rag-piped-param-instruct") {
-                    return;
-                }
                 const div = document.createElement('div');
                 div.className = "flex items-center space-x-3 p-2 rounded-lg transition";
                 div.style.cssText = "hover:background: var(--bg-secondary);";
@@ -911,11 +876,10 @@
 
         async function startSession() {
             const btn = document.getElementById('genBtn');
-            const theme = document.getElementById('themeDropdown').value;
             const chapter = document.getElementById('chapterDropdown').value;
             const shuffle = document.getElementById('shuffleToggle').checked;
 
-            if(!activeSubject || !theme || !chapter) return alert("Select Subject, Chapter & Theme");
+            if(!activeSubject || !chapter) return alert("Select Subject and Chapter");
 
             const typeRequests = [];
             document.querySelectorAll('.q-type-count').forEach(input => {
@@ -941,7 +905,6 @@
 
             // Prepare the sidebar content
             document.getElementById('sidebarContent').innerHTML = `
-                <p class='mb-2 font-bold' style="color: var(--text-primary);">Theme: ${theme}</p>
                 <p style="color: var(--text-secondary);">Retrieving reference chunks (${activeLanguage}) for NCERT ${activeSubject} Chapter: ${chapter}...</p>
                 <p class='mt-4 text-xs opacity-70' style="color: var(--text-muted);">When questions are ready, expand <strong>Source text</strong> to see the extracted chunk and use <strong>Explore in PDF</strong> to view the source page and chat.</p>
             `;
@@ -962,7 +925,7 @@
                             depth: activeDepth,
                             subject: activeSubject,
                             chapter: chapter,
-                            theme: theme,
+                            theme: "general",
                             qType: req.type,
                             num_questions: req.count
                         })
