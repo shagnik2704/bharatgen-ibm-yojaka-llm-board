@@ -259,7 +259,7 @@ A comprehensive API for generating NCERT/CBSE-aligned academic assessment questi
     ]
 )
 BASE_DIR = Path(__file__).resolve().parent
-DATABASE_URL = "sqlite:///./questions.db"
+DATABASE_URL = "sqlite:////tmp/questions.db"
 
 engine = create_engine(
     DATABASE_URL,

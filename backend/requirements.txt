@@ -23,5 +23,12 @@ pypdf
 faiss-cpu
 
 
+
+
+
+
+# --- Database ---
+sqlalchemy
+
 # --- Utilities ---
 pathlib

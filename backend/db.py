@@ -4,8 +4,10 @@ from sqlalchemy.orm import sessionmaker
 from datetime import datetime
 import uuid
 import json
+import os
 
-DATABASE_URL = "sqlite:///./questions.db"
+# Use /tmp for OpenShift (writable directory)
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:////tmp/questions.db")
 
 engine = create_engine(
     DATABASE_URL,
