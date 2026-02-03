@@ -873,10 +873,10 @@ def get_alignment_score(req,q):
 
     qtype_score = guardrails_qwen.evaluate(
         task_description=
-        f'''You are to determine whether it is an {req.qType} question type or not.''',
-        evaluation_parameter="You to rate whether the question satisfies all conditions are not or not on a scale of 1 to 2. A score of 1 indicates that either or both conditions are not satisfied while a score of 2 indicates that both conditions are satisfied",
+        f'''You are to determine whether it is a/an {req.qType} question type or not.''',
+        evaluation_parameter="You to rate whether the question satisfies all conditions are not or not on a scale of 1 to 2. A score of 1 indicates that it is not of the given question type while a score of 2 indicates that it is of the given question type.",
         question=q['question'],
-        answer=''
+        answer=q['answer']
     )
 
     validity_score = verification_llama.evaluate(
