@@ -72,7 +72,17 @@ PARAM1_7B_MOE_PATH=/home/jashwanth/Param-1-7B-MoE
 ### Option 1: Docker (Recommended)
 
 ```bash
+# Build and start containers
 docker compose up --build
+
+# Or run in detached mode
+docker compose up -d
+
+# View logs
+docker compose logs -f backend
+
+# Stop containers
+docker compose down
 ```
 
 - Backend available at `http://localhost:8005/`

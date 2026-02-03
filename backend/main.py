@@ -192,28 +192,49 @@ load_dotenv()
 app = FastAPI(
     title="BharatGen LLM Board API",
     description="""
-## BharatGen IBM Yojaka LLM Board API
+## BharatGen IBM Yojaka LLM Board API - Sovereign AI Stack
 
-This API provides endpoints for:
-- **Question Generation**: Generate academic assessment questions using various LLM models
-- **Council Flow**: Multi-model orchestration for improved question quality
-- **RAG Pipeline**: NCERT-based Retrieval Augmented Generation
-- **Chapter Management**: List available chapters by subject and language
+A comprehensive API for generating NCERT/CBSE-aligned academic assessment questions using sovereign AI models.
 
-### Available Models
-- Gemini
-- OpenAI GPT
-- Groq
-- Local Llama
-- Param-1 (1.7B & 2.9B variants)
-- Qwen
+### 🎯 Core Features
 
-### Swagger UI
-Access this documentation at `/docs` or ReDoc at `/redoc`
+| Feature | Description |
+|---------|-------------|
+| **Question Generation** | Generate MCQs, Short/Long Answer questions using LLMs |
+| **Council/Board Mode** | Multi-model orchestration for higher quality questions |
+| **RAG Pipeline** | NCERT textbook-grounded Retrieval Augmented Generation |
+| **GEval Scoring** | Automatic quality scoring (NCERT alignment, Bloom's taxonomy, Guardrails) |
+| **Explore Mode** | Interactive PDF-based tutoring with source grounding |
+
+### 🤖 Available Models
+| Model ID | Description |
+|----------|-------------|
+| `groq-llama-8b` | Llama 3.1 8B via Groq (fast) |
+| `groq-llama-70b` | Llama 3.3 70B via Groq (versatile) |
+| `rag-piped-groq-70b` | Llama 70B with RAG context |
+
+### 📊 Cognitive Depth Levels (DOK/Bloom's)
+- **DOK 1**: Recall/Remember - Facts, terms, definitions
+- **DOK 2**: Skills & Concepts - Classify, describe, solve routine problems  
+- **DOK 3**: Strategic Thinking - Analyze, evaluate, non-routine problems
+- **DOK 4**: Extended Thinking - Create, synthesize, cross-chapter connections
+
+### 🔗 API Endpoints Summary
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/ask` | POST | Generate questions (single model or council mode) |
+| `/chapters` | GET | List chapters by subject and language |
+| `/explore/chat` | POST | Chat with PDF context grounding |
+| `/api/pdf` | GET | Serve PDF files for exploration |
+| `/health` | GET | Health check endpoint |
+
+### 📖 Documentation
+- **Swagger UI**: `/docs`
+- **ReDoc**: `/redoc`
     """,
-    version="1.0.0",
+    version="2.0.0",
     contact={
-        "name": "BharatGen Team",
+        "name": "BharatGen Team - IBM Yojaka",
     },
     license_info={
         "name": "MIT",
@@ -221,15 +242,19 @@ Access this documentation at `/docs` or ReDoc at `/redoc`
     openapi_tags=[
         {
             "name": "Question Generation",
-            "description": "Endpoints for generating academic questions using LLMs"
+            "description": "Generate NCERT-aligned academic questions using LLM models with optional council orchestration"
         },
         {
             "name": "Chapters",
-            "description": "Endpoints for managing chapters and subjects"
+            "description": "Retrieve available chapters and subjects from the NCERT curriculum"
         },
         {
-            "name": "Testing",
-            "description": "Endpoints for testing model connectivity"
+            "name": "Explore",
+            "description": "Interactive PDF exploration and tutoring with RAG-grounded responses"
+        },
+        {
+            "name": "Health",
+            "description": "System health and status endpoints"
         }
     ]
 )
@@ -461,11 +486,14 @@ def _get_books_root():
     return (project_root / "data").resolve()
 
 
-@app.get("/api/pdf")
+@app.get("/api/pdf", tags=["Explore"])
 async def serve_pdf(path: str):
     """
-    Serve a PDF from the books root. path is relative (e.g. English/Biology/Class-11/file.pdf).
-    Validates path is under BOOKS_ROOT and returns FileResponse.
+    Serve a PDF file for the Explore mode.
+    
+    - **path**: Relative path to PDF (e.g., `English/Biology/Class-11/file.pdf`)
+    
+    Returns the PDF file for viewing in the Explore interface.
     """
     if not path or ".." in path or path.startswith("/"):
         raise HTTPException(status_code=400, detail="Invalid path")
@@ -488,10 +516,20 @@ class ExploreChatRequest(BaseModel):
     messages: List[dict]  # [{"role": "user"|"assistant", "content": str}]
 
 
-@app.post("/explore/chat")
+@app.post("/explore/chat", tags=["Explore"])
 async def explore_chat(body: ExploreChatRequest):
     """
-    Chat with context grounded in the provided source chunk. Answers based on chunk_text only.
+    Interactive chat grounded in PDF source material.
+    
+    The AI tutor answers questions using ONLY the provided source chunk text,
+    ensuring factually accurate, curriculum-aligned responses.
+    
+    - **chunk_text**: The source material to ground responses
+    - **pdf_path**: Optional path to the PDF being viewed
+    - **page**: Optional current page number
+    - **messages**: Conversation history as list of {role, content} objects
+    
+    Returns the AI tutor's response grounded in the source material.
     """
     try:
         system = (
@@ -514,17 +552,20 @@ async def explore_chat(body: ExploreChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/chapters")
+@app.get("/chapters", tags=["Chapters"])
 async def list_chapters(subject: str, language: str = "en"):
     """
-    Return chapter names for a subject and language.
+    Get available chapters for a subject.
     
-    Reads from indexes/<language>/chapters_manifest.json
+    Returns chapters from the NCERT curriculum manifest.
     
-    - **subject**: The subject name (e.g., 'Science', 'Mathematics')
-    - **language**: Language code - 'en' for English, 'hi' for Hindi (default: 'en')
+    - **subject**: Subject name (e.g., `Science`, `Mathematics`, `Physics`)
+    - **language**: Language code - `en` (English) or `hi` (Hindi)
     
-    Returns a list of chapter names for the given subject.
+    Example response:
+    ```json
+    {"chapters": ["Units and Measurements", "Motion in a Straight Line", ...]}
+    ```
     """
     language = (language or "en").lower()
     if language not in ("en", "hi"):
@@ -544,10 +585,19 @@ async def list_chapters(subject: str, language: str = "en"):
         raise HTTPException(status_code=500, detail=f"Failed to read chapters manifest: {e}")
 
 
-@app.get("/health")
+@app.get("/health", tags=["Health"])
 async def health_check():
     """
-    Health check endpoint. Returns ok if Groq client is initialized.
+    System health check.
+    
+    Returns the status of critical components:
+    - **ok**: `true` if the Groq client is initialized and ready
+    - **message**: Current operational mode
+    
+    Example response:
+    ```json
+    {"ok": true, "message": "Groq-only mode"}
+    ```
     """
     return {"ok": groq_client is not None, "message": "Groq-only mode"}
 
@@ -917,10 +967,10 @@ The provided bloom level is {req.depth}.''',
         'qtype':qtype_score,
         'language':language_score
         }
-@app.post("/ask")
+@app.post("/ask", tags=["Question Generation"])
 async def ask_llm(req: QueryRequest):
     """
-    Generate academic assessment questions using LLM models.
+    Generate NCERT-aligned academic assessment questions.
     
     This endpoint supports two modes:
     

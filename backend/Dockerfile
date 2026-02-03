@@ -17,5 +17,5 @@ RUN pip install --upgrade pip setuptools wheel \
 # Copy backend code
 COPY backend /app
 
-EXPOSE 8005
+EXPOSE 9012
 CMD ["python", "app.py"]
