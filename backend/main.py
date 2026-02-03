@@ -262,7 +262,7 @@ except ImportError:
     groq_client = None
 
 # GEval instances for alignment scoring - use Groq by default
-_geval_model = os.getenv("GEVAL_MODEL", "groq-llama-8b")
+_geval_model = os.getenv("GEVAL_MODEL", "groq-qwen-32b")
 param_ncert = GEval(model=_geval_model, groq_api_key=groq_api_key or "", likert_scale=[1, 2, 3, 4, 5])
 llama_bloom = GEval(model=_geval_model, groq_api_key=groq_api_key or "", likert_scale=[1, 2, 3, 4, 5])
 guardrails_qwen = GEval(model=_geval_model, groq_api_key=groq_api_key or "", likert_scale=[1, 2])
