@@ -172,6 +172,7 @@ import os
 import re
 import traceback
 import json
+from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -287,11 +288,13 @@ except ImportError:
     groq_client = None
 
 # GEval instances for alignment scoring - use Groq by default
-_geval_model = os.getenv("GEVAL_MODEL", "https://qwen32b.impactsummit.nxtgen.cloud/")
+_geval_model = os.getenv("GEVAL_MODEL", "https://qwen32b.impactsummit.nxtgen.cloud/v1/chat/completions")
+_geval_model_2 = os.getenv("GEVAL_MODEL_2", "https://model-serve-app-route.impactsummit.nxtgen.cloud/v1/chat/completions")
+
 param_ncert = GEval(model=_geval_model, groq_api_key=groq_api_key or "", likert_scale=[1, 2, 3, 4, 5])
-llama_bloom = GEval(model=_geval_model, groq_api_key=groq_api_key or "", likert_scale=[1, 2, 3, 4, 5])
+llama_bloom = GEval(model=_geval_model_2, groq_api_key=groq_api_key or "", likert_scale=[1, 2, 3, 4, 5])
 guardrails_qwen = GEval(model=_geval_model, groq_api_key=groq_api_key or "", likert_scale=[1, 2])
-verification_llama = GEval(model=_geval_model, groq_api_key=groq_api_key or "", likert_scale=[1, 2])
+verification_llama = GEval(model=_geval_model_2, groq_api_key=groq_api_key or "", likert_scale=[1, 2])
 
 # Share Groq client with model_runner
 from model_runner import set_clients
@@ -903,70 +906,118 @@ def detect_language(text: str) -> str:
     else:
         return "unknown"
 
-def get_alignment_score(req,q):
-    print("===============Generating Scores============")
+from concurrent.futures import ThreadPoolExecutor
+
+
+def _eval_vllm_a(req, q):
     ncert_score = param_ncert.evaluate(
-        task_description=
-        f'''You are to determine whether the given question and answer pair is a standard NCERT 10th, 11th or 12th standard question or not.''',
-        evaluation_parameter="You to rate how well it is aligned on a scale of 1 to 5. A score of 1 indicates low alignemtn while a score of 5 indicates high alignment.",
+        task_description=(
+            "You are to determine whether the given question and answer pair "
+            "is a standard NCERT 10th, 11th or 12th standard question or not."
+        ),
+        evaluation_parameter=(
+            "You to rate how well it is aligned on a scale of 1 to 5. "
+            "A score of 1 indicates low alignment while a score of 5 indicates high alignment."
+        ),
         question=q['question'],
         answer=''
     )
 
-    language_score = detect_language(q['question'] + '\n' + q['answer'])
-    if(language_score==req.language):
-        language_score=2
-    elif(language_score=='hien'):
-        language_score=1.5
-    else:
-        language_score=1
-
     qtype_score = guardrails_qwen.evaluate(
-        task_description=
-        f'''You are to determine whether it is a/an {req.qType} question type or not.''',
-        evaluation_parameter="You to rate whether the question satisfies all conditions are not or not on a scale of 1 to 2. A score of 1 indicates that it is not of the given question type while a score of 2 indicates that it is of the given question type.",
+        task_description=(
+            f"You are to determine whether it is a/an {req.qType} question type or not."
+        ),
+        evaluation_parameter=(
+            "You to rate whether the question satisfies all conditions on a scale of 1 to 2."
+        ),
         question=q['question'],
         answer=q['answer']
     )
 
-    validity_score = verification_llama.evaluate(
-        task_description=f"You are to determine whether the given question and answer pair is valid or not. Try to solve the question without looking at the answer and then verify with the given answer.",
-        evaluation_parameter="You to rate whether the question is appropriate or not on a scale of 1 to 2. A score of 1 indicates inappropriateness while a score of 2 indicates appropriate question.",
-        question=q['question'],
-        answer=q['answer']
-    )
-
-    
     guardrail_score = guardrails_qwen.evaluate(
         task_description=GUARDRAILS_PROMPT,
-        evaluation_parameter="You to rate whether the question is appropriate or not on a scale of 1 to 2. A score of 1 indicates inappropriateness while a score of 2 indicates appropriate question.",
+        evaluation_parameter=(
+            "You to rate whether the question is appropriate or not on a scale of 1 to 2."
+        ),
+        question=q['question'],
+        answer=q['answer']
+    )
+
+    return {
+        "ncert": ncert_score,
+        "qtype": qtype_score,
+        "guard": guardrail_score,
+    }
+
+
+def _eval_vllm_b(req, q):
+    validity_score = verification_llama.evaluate(
+        task_description=(
+            "You are to determine whether the given question and answer pair is valid or not. "
+            "Try to solve the question without looking at the answer and then verify with the given answer."
+        ),
+        evaluation_parameter=(
+            "You to rate whether the question is appropriate or not on a scale of 1 to 2."
+        ),
         question=q['question'],
         answer=q['answer']
     )
 
     bloom_score = llama_bloom.evaluate(
-        task_description=f'''You are to evaluate the DoK level alignment of a question. 
-        You must adhere to the following definitions for the requested DEPTH:
-        - DOK 1 (Recall/Remember): Recall of a fact, term, or property. (e.g., Define, List, State)
-        - DOK 2 (Skills & Concepts/Understand & Apply): Use of information or conceptual knowledge. (e.g., Describe, Classify, Solve routine problems)
-        - DOK 3 (Strategic Thinking/Analyze & Evaluate): Reasoning, planning, and using evidence. (e.g., Explain why, Non-routine problem solving, Compare/Contrast phenomena)
-        - DOK 4 (Extended Thinking/Create): Complex synthesis and connection across chapters. (e.g., Create a model, Design an experiment, Critique a theoretical framework)
-
-The provided bloom level is {req.depth}.''',
-        evaluation_parameter="You to rate how well it is aligned on a scale of 1 to 5. A score of 1 indicates low alignemtn while a score of 5 indicates high alignment.",
+        task_description=(
+            f"You are to evaluate the DoK level alignment of a question.\n"
+            f"The provided bloom level is {req.depth}."
+        ),
+        evaluation_parameter=(
+            "You to rate how well it is aligned on a scale of 1 to 5."
+        ),
         question=q['question'],
         answer=q['answer']
     )
 
-    print(f"===============Done generating Scores====Bloom : {bloom_score}==NCERT : {ncert_score}=Guard : {guardrail_score}=Validity : {validity_score}====")
     return {
-            'bloom':bloom_score,
-            'ncert': ncert_score,
-            'guard': guardrail_score,
-            'validity':validity_score,
-            'qtype':qtype_score,
-            'language':language_score
-        }
+        "validity": validity_score,
+        "bloom": bloom_score,
+    }
+
+
+def _eval_language(req, q):
+    language_score = detect_language(q['question'] + '\n' + q['answer'])
+    if language_score == req.language:
+        return 2
+    elif language_score == 'hien':
+        return 1.5
+    return 1
+
+
+def get_alignment_score(req, q):
+    print("===============Generating Scores============")
+
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        future_a = executor.submit(_eval_vllm_a, req, q)
+        future_b = executor.submit(_eval_vllm_b, req, q)
+        future_lang = executor.submit(_eval_language, req, q)
+
+        scores_a = future_a.result()
+        scores_b = future_b.result()
+        language_score = future_lang.result()
+
+    result = {
+        **scores_a,
+        **scores_b,
+        "language": language_score,
+    }
+
+    print(
+        "===============Done generating Scores===="
+        f"Bloom : {result['bloom']} "
+        f"NCERT : {result['ncert']} "
+        f"Guard : {result['guard']} "
+        f"Validity : {result['validity']}===="
+    )
+
+    return result
+
 @app.post("/ask", tags=["Question Generation"])
 async def ask_llm(req: QueryRequest):
     """

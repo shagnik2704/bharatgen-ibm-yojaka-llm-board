@@ -223,6 +223,7 @@ Format exactly like this:
         return model_output.strip()
 
     def _call_vllm(self, prompt: str) -> str:
+        print("Here ")
         data = {
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": 2048,
