@@ -7,7 +7,7 @@ import json
 import os
 
 # Use /tmp for OpenShift (writable directory)
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:////tmp/questions.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:////tmp/bharatgen_questions.db")
 
 engine = create_engine(
     DATABASE_URL,
