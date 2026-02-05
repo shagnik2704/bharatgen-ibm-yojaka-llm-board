@@ -1,0 +1,125 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hf-token
+  namespace: nextgen
+type: Opaque
+stringData:
+  HF_TOKEN: hf_xxxxxxxxxxxx
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: groq-api-secret
+  namespace: nextgen
+type: Opaque
+stringData:
+  GROQ_API_KEY: gsk_xxxxxxxxxxxxxxxxxxx
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-qwen32
+  namespace: nextgen
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: model-qwen32
+  template:
+    metadata:
+      labels:
+        app: model-qwen32
+    spec:
+      serviceAccountName: deployer
+      containers:
+        - name: bharatgen-backend
+          image: python:3.11-slim
+          env:
+            - name: PORT
+              value: "8100"
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-token
+                  key: HF_TOKEN
+
+            - name: GROQ_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: groq-api-secret
+                  key: GROQ_API_KEY
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              echo "Downloading repository..."
+              python -c "import urllib.request; urllib.request.urlretrieve('https://github.com/venkatapathy/bharatgen-ibm-yojaka-llm-board/archive/refs/heads/main.zip', '/tmp/repo.zip')"
+
+              echo "Extracting..."
+              python -c "import zipfile; zipfile.ZipFile('/tmp/repo.zip').extractall('/tmp')"
+
+              cd /tmp/bharatgen-ibm-yojaka-llm-board-main/backend
+
+              echo "Installing dependencies..."
+              pip install --no-cache-dir --upgrade --target=/tmp/pylibs -r requirements.txt
+              rm -f /tmp/pylibs/pathlib.py
+
+              export PYTHONPATH="/tmp/pylibs:$PYTHONPATH"
+              export PATH="/tmp/pylibs/bin:$PATH"
+
+              echo "Starting application..."
+              python app.py
+          ports:
+            - name: http
+              containerPort: 8100
+          resources:
+            limits:
+              memory: "4Gi"
+              cpu: "2"
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+          volumeMounts:
+            - name: cache
+              mountPath: /.cache
+            - name: tmp-volume
+              mountPath: /tmp
+      volumes:
+        - name: cache
+          emptyDir: {}
+        - name: tmp-volume
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: model-qwen32
+  namespace: nextgen
+spec:
+  type: ClusterIP
+  selector:
+    app: model-qwen32
+  ports:
+    - name: http
+      port: 8100
+      targetPort: http
+---
+
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: bharatgen-yojaka-qg-platform
+  namespace: nextgen
+  annotations:
+    haproxy.router.openshift.io/timeout: 5m
+spec:
+  to:
+    kind: Service
+    name: model-qwen32
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+  wildcardPolicy: None

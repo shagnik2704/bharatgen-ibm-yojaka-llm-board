@@ -31,4 +31,4 @@ faiss-cpu
 sqlalchemy
 
 # --- Utilities ---
-pathlib
+# pathlib is built-in to Python 3.4+, no need to install
