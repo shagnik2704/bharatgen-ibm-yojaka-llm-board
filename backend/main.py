@@ -670,18 +670,58 @@ def viewer():
             box-shadow:0 10px 25px rgba(0,0,0,.05)
             }
 
+            /* ---------- TABLE STYLE ---------- */
+
             table{
-            width:100%;
-            border-collapse:collapse
+                width:100%;
+                border-collapse:separate;
+                border-spacing:0;
+                margin-top:10px;
+                overflow:hidden;
+                border-radius:12px;
+                background:white;
             }
 
-            th,td{
-            padding:12px;
-            text-align:left;
-            border-bottom:1px solid #e5e7eb
+            /* header */
+            th{
+                background:#f1f5f9;
+                color:#475569;
+                font-size:13px;
+                text-transform:uppercase;
+                letter-spacing:.5px;
+                padding:14px 12px;
+                border-bottom:1px solid #e2e8f0;
             }
 
-            th{color:#64748b;font-size:13px}
+            /* cells */
+            td{
+                padding:14px 12px;
+                border-bottom:1px solid #f1f5f9;
+                font-size:14px;
+            }
+
+            /* zebra striping */
+            tbody tr:nth-child(even){
+                background:#fafafa;
+            }
+
+            /* hover effect */
+            tbody tr:hover{
+                background:#eef2ff;
+                transition:background .2s;
+            }
+
+            /* preview text look */
+            tbody td:nth-child(2){
+                color:#0f172a;
+                font-weight:500;
+            }
+
+            /* alignment score badge look */
+            tbody td:nth-child(3){
+                font-weight:600;
+                color:#2563eb;
+            }
 
             button{
             background:#2563eb;
@@ -706,33 +746,51 @@ def viewer():
             }
 
             .modal{
-            display:none;
-            position:fixed;
-            top:0;left:0;
-            width:100%;height:100%;
-            background:rgba(0,0,0,.4)
+                display:none;
+                position:fixed;
+                inset:0;
+                background:rgba(15,23,42,.55);
+                backdrop-filter:blur(4px);
+                align-items:center;
+                justify-content:center;
+                z-index:1000;
             }
 
             .modal-content{
-            background:white;
-            margin:5% auto;
-            padding:25px;
-            width:60%;
-            max-height:80vh;
-            overflow-y:auto;
-            border-radius:10px
+                background:white;
+                width:70%;
+                max-width:900px;
+                max-height:85vh;
+                overflow-y:auto;
+                border-radius:16px;
+                padding:32px;
+                box-shadow:0 20px 60px rgba(0,0,0,.25);
+                animation:fadeUp .25s ease;
+            }
+
+            @keyframes fadeUp{
+                from{opacity:0; transform:translateY(20px)}
+                to{opacity:1; transform:translateY(0)}
             }
 
             .close{
-            float:right;
-            cursor:pointer;
-            font-size:20px
+                float:right;
+                cursor:pointer;
+                font-size:22px;
+                font-weight:bold;
+                color:#64748b;
+            }
+
+            .close:hover{
+                color:#0f172a;
             }
 
             .meta{
-            display:none;
-            color:#475569;
-            margin-top:10px
+                display:none;
+                color:#475569;
+                margin-top:16px;
+                padding-top:16px;
+                border-top:1px solid #e2e8f0;
             }
 
             </style>
@@ -742,7 +800,21 @@ def viewer():
 
             <div class="card">
 
-            <h2>Questions</h2>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px">
+                <h2 style="margin:0">Questions</h2>
+
+                <button onclick="window.location.href='/'"
+                         style="
+                            background:#2563eb;
+                            color:white;
+                            border:none;
+                            padding:6px 14px;
+                            border-radius:6px;
+                            cursor:pointer;
+                        ">
+                    ← Home
+                </button>
+            </div>
 
             <table>
             <thead>
@@ -787,23 +859,47 @@ def viewer():
                 }
 
                 function renderTable(obj){
-                    let html = "<table style='width:100%;margin-top:8px'>";
+                    let html = `
+                    <table style="
+                        width:100%;
+                        margin-top:10px;
+                        border-collapse:separate;
+                        border-spacing:0;
+                        background:#f8fafc;
+                        border-radius:10px;
+                        overflow:hidden;
+                        font-size:14px
+                    ">`;
 
                     for(const k in obj){
                         const v = obj[k];
                         if(v !== null && v !== undefined){
-                        html += `
+                            html += `
                             <tr>
-                            <td style="padding:6px 0;color:#475569;width:35%">${prettyKey(k)}</td>
-                            <td style="padding:6px 0;font-weight:500">${v}</td>
-                            </tr>
-                        `;
+                                <td style="
+                                    padding:10px 14px;
+                                    width:35%;
+                                    color:#475569;
+                                    font-weight:600;
+                                    border-bottom:1px solid #e2e8f0
+                                ">
+                                    ${prettyKey(k)}
+                                </td>
+                                <td style="
+                                    padding:10px 14px;
+                                    font-weight:500;
+                                    color:#0f172a;
+                                    border-bottom:1px solid #e2e8f0
+                                ">
+                                    ${v}
+                                </td>
+                            </tr>`;
                         }
                     }
 
                     html += "</table>";
                     return html;
-               }
+                }
 
             function load(){
             fetch(`/api/questions?offset=${offset}&limit=${limit}`)
@@ -819,11 +915,18 @@ def viewer():
                 const tr=document.createElement("tr");
 
                 const preview=q.question.substring(0,40)+"...";
+                const pct = Math.round((q.alignment_score/5)*100);
 
-                tr.innerHTML=`
+                tr.innerHTML = `
                 <td>${qcounter++}</td>
                 <td>${preview}</td>
-                <td>${q.alignment_score}</td>
+                <td style="font-weight:600;color:${
+                    pct < 33 ? '#dc2626' :
+                    pct <= 66 ? '#ca8a04' :
+                    '#16a34a'
+                }">
+                    ${q.alignment_score}
+                </td>
                 <td><button onclick="openModal('${q.id}')">View Details</button></td>
                 `;
 
@@ -841,29 +944,75 @@ def viewer():
             const pct=Math.round((q.alignment_score/5)*100);
 
             modalBody.innerHTML = `
-            <h3>${q.question}</h3>
+                <div style="margin-bottom:18px">
+                    <div style="font-size:18px;font-weight:600;color:#0f172a;margin-bottom:10px">
+                        ${q.question}
+                    </div>
 
-            <p><i>${q.answer}</i></p>
+                    <div style="color:#334155;background:#f8fafc;padding:14px;border-radius:10px">
+                        ${q.answer}
+                    </div>
 
-            Alignment: ${q.alignment_score}/5 (${pct}%)
+                    <div style="margin-top:15px;font-weight:600;color:#2563eb">
+                        <div style="margin-top:15px">
 
-            <br><br>
+                        <div style="
+                            font-weight:600;
+                            margin-bottom:6px;
+                            color:${
+                                pct < 33 ? '#dc2626' :
+                                pct <= 66 ? '#ca8a04' :
+                                '#16a34a'
+                            }
+                        ">
+                            Alignment Score: ${q.alignment_score}/5 (${pct}%)
+                        </div>
 
-            <button onclick="toggle()">Show Metadata</button>
+                        <div style="
+                            width:100%;
+                            height:10px;
+                            background:#e2e8f0;
+                            border-radius:999px;
+                            overflow:hidden
+                        ">
+                            <div style="
+                                width:${pct}%;
+                                height:100%;
+                                background:${
+                                    pct < 33 ? '#dc2626' :
+                                    pct <= 66 ? '#eab308' :
+                                    '#22c55e'
+                                };
+                                transition:width .3s ease
+                            "></div>
+                        </div>
 
-            <div class="meta" id="meta">
-            <hr>
+                    </div>
+                    </div>
+                </div>
 
-            <h4>Request</h4>
-            ${renderTable(q.req)}
+                <button onclick="toggle()"
+                        style="background:#2563eb;color:white;padding:8px 14px;border-radius:8px;border:none;margin-top:10px">
+                        Show Metadata
+                </button>
 
-            <h4 style="margin-top:15px">Scores</h4>
-            ${renderTable(q.scores)}
+                <div class="meta" id="meta">
+                <hr>
 
-            </div>
-            `;
+                <h4 style="margin-top:20px;color:#0f172a;font-size:15px">
+                Request Details
+                </h4>
+                ${renderTable(q.req)}
 
-            modal.style.display="block";
+               <h4 style="margin-top:20px;color:#0f172a;font-size:15px">
+                Evaluation Scores
+                </h4>
+                ${renderTable(q.scores)}
+
+                </div>
+                `;
+
+            modal.style.display="flex";
             });
             }
 
