@@ -34,8 +34,71 @@ def initialize_clients():
                 print(f"Warning: Failed to initialize Groq client: {e}")
                 _groq_client = None
 
-def call_vllm(model_url, prompt: str,max_tokens=2048) -> str:
+from gradio_client import Client
+import re
+
+def call_vllm(model_url, prompt: str,max_tokens=2048,context_chunks=None,req=None) -> str:
     # print(prompt)
+    if(req):
+        depth_str=""
+        print(req.qType)
+        if('Level 1' in req.depth):
+            depth_str="DOK 1 (Recall): Direct facts from the text. (e.g., 'What is...', 'Define...')"
+        elif('Level 2' in req.depth):
+            depth_str="DOK 2 (Understand/Apply): Interpreting the text. (e.g., 'How does X affect Y?', 'Classify...')"
+        elif('Level 3' in req.depth):
+            depth_str="DOK 3 (Analyze/Evaluate): Using the text to solve non-routine problems. (e.g., 'What would happen if...', 'Justify...')"
+        elif('Level 4' in req.depth):
+            depth_str="DOK 4 (Create/Synthesis): Connecting this text to broader scientific/mathematical principles."
+        question_text='Question Text'
+
+        if('True' in req.qType):
+            question_text = "Question text starting with State True or False followed by the statement."
+        elif('Fill' in req.qType):
+            question_text = "Structure it as a sentence with a blank in it. Do not put options like an MCQ."
+        elif('MCQ' in req.qType):
+            question_text = "Question text along with all the four options A, B, C and D."
+        
+        system_prompt = f'''You are a helpful AI assistant. You think step-by-step. 
+Generate {"an MCQ" if "MCQ" in req.qType else req.qType} type question. {"Structure it as a sentence with a blank in it. Do not put options like an MCQ." if 'Fill' in req.qType else "The question should conttain 4 options namely A,B, C and D along with the text." if 'MCQ' in req.qType else ""}
+Generate each question in the following structure. Repeat this block for every question:
+<Question>
+{question_text}
+</Question>
+<Answer>
+Correct answer with a 2-sentence explanation of the underlying concept]
+</Answer>
+'''
+        user_prompt = f'''
+{"Generate an MCQ with options in the question text." if 'MCQ' in req.qType else ""}
+SUBJECT: {req.subject}
+CHAPTER: {req.chapter}
+REQUIRED DEPTH: {depth_str}
+QUANTITY: {req.num_questions}
+{"Context chunk : "+context_chunk if context_chunks else ""}
+'''
+        print("\n============System===============\n",system_prompt,"\n============END===============\n")
+        print("\n============User===============\n",user_prompt,"\n============END===============\n")
+        client = Client("https://1df79b03590242911b.gradio.live/")
+        result = client.predict(
+            message=user_prompt,
+            history=[],
+            system_prompt=system_prompt,
+            temp=0.7,
+            max_tok=2048,
+            top_p=0.9,
+            top_k=50,
+            api_name="/chat_fn"
+        )
+        result = result[0][-1]['content'][-1]['text']
+        try:
+            result = re.sub(r"<think>[\s\S]*?</think>", "", result)
+            result = result.split("<details style='margin-top:10px; font-size:0.85em; opacity:0.6;'><summary>🔍 Debug: Raw Response</summary>")[-1]
+        except Exception as e:
+            print(e)
+            pass 
+        print("\n============START===============\n",result,"\n============END===============\n")
+        return result
     data = {
                 "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": max_tokens,
@@ -52,7 +115,7 @@ def call_vllm(model_url, prompt: str,max_tokens=2048) -> str:
         resp = "<Question>The model generated thoughts, but not words. 🤔</Question> \n <Answer>Thinking...🤔</Answer>"
     return resp.strip()
 
-async def run_model(model_id: str, prompt: str, context_chunks: tuple = None) -> str:
+async def run_model(model_id: str, prompt: str, context_chunks: tuple = None, req=None) -> str:
     """
     Execute a prompt on a Groq model.
     
@@ -74,7 +137,7 @@ async def run_model(model_id: str, prompt: str, context_chunks: tuple = None) ->
         "groq-llama-70b": ("llama-3.3-70b-versatile", 32768),
         "groq-Qwen3-32B":('qwen/qwen3-32b',32768),
         "Qwen3-32B":(" https://model-serve-qwen3-32b.impactsummit.nxtgen.cloud/v1/chat/completions",32768),
-        "Param-5B":("https://param5b.impactsummit.nxtgen.cloud/v1/chat/completions",2048),
+        "Param-17B":("https://param5b.impactsummit.nxtgen.cloud/v1/chat/completions",2048),
         "rag-piped-groq-70b": ("llama-3.3-70b-versatile", 32768),
         "groq-llama-guard": ("meta-llama/llama-guard-4-12b", 1024),
         "groq-gpt-oss-120b": ("openai/gpt-oss-120b", 65536),
@@ -82,16 +145,11 @@ async def run_model(model_id: str, prompt: str, context_chunks: tuple = None) ->
     }
     
     if(('Qwen' in model_id or 'Param' in model_id) and 'groq' not in model_id):
-        print("HERERER")
         url,token_limit = model_map[model_id]
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
             None,
-<<<<<<< Updated upstream
-            lambda: call_vllm(url, prompt + ("\nHere's some context on the topic : \n"+context_chunks[0] if(context_chunks) else ""),max_tokens=3000)
-=======
-            lambda: call_vllm(url, prompt + ("\nHere's some context on the topic : \n"+context_chunks[0] if(context_chunks) else ""),max_tokens=token_limit)
->>>>>>> Stashed changes
+            lambda: call_vllm(url, prompt + ("\nHere's some context on the topic : \n"+context_chunks[0] if(context_chunks) else ""),max_tokens=token_limit,context_chunks=context_chunks,req=req)
         )
     if model_id not in model_map:
         return f"<Question>Model '{model_id}' not found. Available: {', '.join(model_map.keys())}</Question><Answer>N/A</Answer>"
@@ -111,7 +169,7 @@ async def run_model(model_id: str, prompt: str, context_chunks: tuple = None) ->
 
 def needs_rag(model_id: str) -> bool:
     """Check if a model requires RAG context."""
-    return True
+    return False
     # return model_id == "rag-piped-groq-70b"
 
 def get_rag_context(chapter: str, theme: str, language: str = "en") -> tuple:

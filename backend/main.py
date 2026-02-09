@@ -1381,7 +1381,7 @@ async def ask_llm(req: QueryRequest, background_tasks: BackgroundTasks):
                     "<Answer> [Correct Answer + 1-sentence logic based on the Source Material] </Answer>"
                 )
             
-            raw_output = await run_model(req.model_id, prompt, context_chunks)
+            raw_output = await run_model(req.model_id, prompt, context_chunks,req=req if 'Param' in req.model_id else None)
             print(raw_output + "\n")
             questions = parse_ai_output(raw_output)
             for q in questions:
