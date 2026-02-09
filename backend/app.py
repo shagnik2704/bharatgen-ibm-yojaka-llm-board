@@ -12,8 +12,8 @@ from main import app
 
 if __name__ == "__main__":
     try:
-        port = int(os.getenv("PORT", "8005"))
-        uvicorn.run(app, host="0.0.0.0", port=port, reload=False)
+        port = int(os.getenv("PORT", "8300"))
+        uvicorn.run(app, host="10.129.6.47", port=port, reload=False)
     except Exception as e:
         print(f"Error starting server: {e}")
         import traceback

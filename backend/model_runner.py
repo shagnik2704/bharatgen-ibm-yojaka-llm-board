@@ -169,12 +169,14 @@ async def run_model(model_id: str, prompt: str, context_chunks: tuple = None, re
 
 def needs_rag(model_id: str) -> bool:
     """Check if a model requires RAG context."""
-    return False
+    return model_id in ["rag-piped-llama", "rag-piped-param-instruct", "rag-piped-groq-70b"]
     # return model_id == "rag-piped-groq-70b"
 
-def get_rag_context(chapter: str, theme: str, language: str = "en") -> tuple:
+def get_rag_context(subject:str, class_level:str, chapter: str, theme: str, language: str = "en") -> tuple:
     """
     Retrieve RAG context chunks for a given chapter and theme, scoped by language.
     Returns (topic_chunk, theme_chunk, topic_meta, theme_meta).
     """
-    return ncert_rag.main_ibm(chapter, language=language)
+    prompt = f"{chapter}"
+    print(prompt)
+    return ncert_rag.main_ibm(prompt, language = language, subject=subject, class_level=class_level)

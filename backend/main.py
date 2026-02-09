@@ -423,6 +423,7 @@ class QueryRequest(BaseModel):
     depth: str
     subject: str
     chapter: str
+    standard: str
     theme: str = "general"
     qType: str
     num_questions: int
@@ -1387,13 +1388,12 @@ async def ask_llm(req: QueryRequest, background_tasks: BackgroundTasks):
                 "<Question>\n[Question text here. If MCQ, include options A, B, C, D]\n</Question>\n"
                 "<Answer>\n[Correct answer with a 2-sentence explanation of the underlying concept]\n</Answer>"
             )
-            
             # Check if RAG is needed
             context_chunks = None
             source_text_attach = None
             source_meta_attach = None
             if needs_rag(req.model_id):
-                topic_chunk, theme_chunk, topic_meta, theme_meta = get_rag_context(req.chapter, "", language=req.language)
+                topic_chunk, theme_chunk, topic_meta, theme_meta = get_rag_context(language=req.language, subject=req.subject, class_level=req.standard, chapter=req.chapter, theme="")
                 # More aggressive truncation - limit to ~800 chars each to keep total prompt manageable
                 max_chunk_length = 800
                 if len(topic_chunk) > max_chunk_length:

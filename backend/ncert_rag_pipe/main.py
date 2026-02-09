@@ -1,12 +1,17 @@
 import os
 import faiss
+import json
 import pickle, requests
 from sentence_transformers import SentenceTransformer
 from typing import Tuple, List, Optional
+import urllib3
 
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(os.path.dirname(BASE_DIR))  # Go up two levels: ncert_rag_pipe -> backend -> root
-BACKEND = "https://edu-rag-bkend.indic-rag.vpc.res.ibm.com"
+BACKEND = "https://edu-rag-bkend.impactsummit.nxtgen.cloud"
+# BACKEND = "https://edu-rag.impactsummit.nxtgen.cloud"
+
 # Build absolute paths to the database files (in indexes folder at project root)
 INDEXES_DIR = os.path.join(PROJECT_ROOT, "indexes")
 
@@ -60,12 +65,12 @@ _rag_retrievers: dict[str, "RAGRetriever"] = {}
 class RAGRetriever:
     def __init__(self, language: str):
         self.language = language
-        index_path, chunks_path = _resolve_index_paths(language)
-        print(f"Loading RAG retriever for language='{language}' (this happens once)...")
-        self.model = SentenceTransformer(MODEL_NAME)
-        self.index = faiss.read_index(index_path)
-        with open(chunks_path, "rb") as f:
-            self.chunks = pickle.load(f)
+        # index_path, chunks_path = _resolve_index_paths(language)
+        # print(f"Loading RAG retriever for language='{language}' (this happens once)...")
+        # self.model = SentenceTransformer(MODEL_NAME)
+        # self.index = faiss.read_index(index_path)
+        # with open(chunks_path, "rb") as f:
+            # self.chunks = pickle.load(f)
         print(f"RAG retriever loaded successfully for language='{language}'!")
 
     def _chunk_text(self, chunk):
@@ -103,25 +108,35 @@ class RAGRetriever:
 
     def call_ibm_rag(self, base_url: str, prompt: str,
                    num_chunks_post_rrf: int = 20,
-                   num_docs_reranker: int = 5,
+                   num_docs_reranker: int = 1,
                    use_reranker: bool = True,
                    language: Optional[str] = None,
                    subject: Optional[str] = None,
                    class_level: Optional[str] = None,
                    timeout: float = 10.0) -> Tuple[bool, List[dict], str]:
-        url = base_url.rstrip("/") + "/reference"
+        url = base_url+"/reference"
+        if (language == "en") :
+            language = "English"
+        else:
+            language = "Hindi"
+        class_level = "Class-"+class_level if class_level else None
         payload = {
             "prompt": prompt,
-            "num_chunks_post_rrf": num_chunks_post_rrf,
-            "num_docs_reranker": num_docs_reranker,
-            "use_reranker": use_reranker,
+            "num_chunks_post_rrf": 20,
+            "num_docs_reranker": 1,
+            "use_reranker": True,
             "language": language,
             "subject": subject,
-            "class_level": class_level,
+            "class_level": class_level
         }
+        headers = {
+            "Content-Type": "application/json",
+            "Cookie": "e40ba42e3abd0921999d9a3c159fb785=9095c2499e56b70d0844d14f729a7836"
+            }
+
         payload = {k: v for k, v in payload.items() if v not in (None, "", [])}
         try:
-            r = requests.post(url, json=payload, timeout=timeout, verify=False)
+            r = requests.post(url, json=payload, headers=headers, timeout=timeout, verify=False)
         except requests.RequestException as e:
             return False, [], f"Request error calling /reference: {e}"
         if r.status_code == 404:
@@ -134,12 +149,20 @@ class RAGRetriever:
             except Exception:
                 return False, [], f"/reference error {r.status_code}: {r.text[:200]}"
         try:
+            print(r)
             j = r.json()
+            print(j)
             docs = j.get("documents", [])
-            docs = [d if isinstance(d, dict) else {"page_content": str(d)} for d in docs]
-            return True, "\n\n".join(docs), ""
+
+            texts = [
+                d.get("page_content", "") if isinstance(d, dict) else str(d)
+                for d in docs
+            ]
+
+            return True, "\n\n".join(texts), ""
+            # return True, "\n\n".join(docs), ""
         except Exception as e:
-            return False, [], [], f"Failed to parse /reference JSON: {e}"
+            return False, [], f"Failed to parse /reference JSON: {e}"
 
 def get_retriever(language: str = "en"):
     """Get or create the global RAG retriever instance for a given language."""
@@ -172,20 +195,19 @@ def main(topic_input, theme_input, language: str = "en"):
 
     return topic_chunk, theme_chunk, topic_meta, theme_meta
 
-def main_ibm(topic_input, language: str = "en"):
+def main_ibm(prompt, language = "en", subject=None, class_level=None):
     retriever = get_retriever(language=language)
-
     # 2. Retrieval (get_context returns text, score, metadata_list)
-    ok, topic_chunk, err = retriever.call_ibm_rag(BACKEND, topic_input)
+    ok, topic_chunk, err = retriever.call_ibm_rag(base_url=BACKEND, prompt=prompt, language=language, subject=subject, class_level=class_level)
     print(ok, topic_chunk, err)
     if(ok):
         # 3. Output Full Results
 
-        print(f"\n🔵 TOPIC CHUNK (Similarity: {t_score:.2%})")
+        # print(f"\n🔵 TOPIC CHUNK (Similarity: {t_score:.2%})")
         print("-" * 40)
         print(topic_chunk)
         
-        print("\n" + "="*80)
+        # print("\n" + "="*80)
 
         return topic_chunk, "", [{'source_path': 'NA', 'page': 1}], [{'source_path': 'NA', 'page': 1}]
     return "", "", [{'source_path': 'NA', 'page': 1}], [{'source_path': 'NA', 'page': 1}]

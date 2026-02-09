@@ -1791,6 +1791,7 @@ renderQuestionTypes();
             const btn = document.getElementById('genBtn');
             const theme = "general";
             const chapter = document.getElementById('chapterDropdown').value;
+            const standard = document.getElementById('classDropdown').value;
             const shuffle = document.getElementById('shuffleToggle').checked;
 
             if (!activeSubject || !chapter) return alert("Select Subject and Chapter");
@@ -1858,6 +1859,7 @@ btn.disabled = true;
                             language: activeLanguage,
                             depth: activeDepth,
                             subject: activeSubject,
+                            standard: activeClass,
                             chapter: chapter,
                             theme: "general",
                             qType: req.type,
