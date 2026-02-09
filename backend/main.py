@@ -188,6 +188,36 @@ from sqlalchemy.orm import sessionmaker
 
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import StreamingResponse
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.enums import TA_LEFT
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+import io
+import re
+
+def latex_to_text(s: str) -> str:
+    if not s:
+        return ""
+
+    replacements = {
+        r"\\frac\{([^}]+)\}\{([^}]+)\}": r"(\1/\2)",
+        r"\\cdot": "×",
+        r"\\times": "×",
+        r"\\Delta": "Δ",
+        r"\\neq": "≠",
+        r"\\leq": "≤",
+        r"\\geq": "≥",
+        r"\\text\{([^}]+)\}": r"\1",
+        r"\$": "",
+    }
+
+    for pattern, repl in replacements.items():
+        s = re.sub(pattern, repl, s)
+
+    return s
 
 
 load_dotenv()
@@ -663,397 +693,411 @@ def viewer_single(qid: str):
 
 
 
-@app.get("/viewq", response_class=HTMLResponse)
+pdfmetrics.registerFont(UnicodeCIDFont('HeiseiMin-W3'))
+
+
+
+@app.get("/api/questions/download/pdf")
+def download_questions_pdf():
+    # ✅ Unicode-safe font (Hindi + English)
+    pdfmetrics.registerFont(UnicodeCIDFont("HeiseiMin-W3"))
+
+    # ✅ SAME DB ACCESS PATTERN AS /api/questions
+    db = SessionLocal()
+    rows = db.query(QuestionDB)\
+        .order_by(QuestionDB.created_at.desc())\
+        .all()
+    db.close()
+
+    buffer = io.BytesIO()
+
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=40,
+        leftMargin=40,
+        topMargin=40,
+        bottomMargin=40
+    )
+
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(
+        name="Q",
+        fontName="HeiseiMin-W3",
+        fontSize=11,
+        leading=16,
+        spaceAfter=10
+    ))
+    styles.add(ParagraphStyle(
+        name="A",
+        fontName="HeiseiMin-W3",
+        fontSize=10,
+        leading=14,
+        leftIndent=20,
+        spaceAfter=16
+    ))
+
+    story = []
+    story.append(Paragraph("<b>BharatGen – Generated Questions</b>", styles["Title"]))
+    story.append(Spacer(1, 20))
+
+    for i, r in enumerate(rows, start=1):
+        question_text = latex_to_text(r.question or "")
+        answer_text   = latex_to_text(r.answer or "")
+
+        story.append(Paragraph(
+            f"<b>Q{i}.</b> {question_text}",
+            styles["Q"]
+        ))
+
+        if answer_text:
+            story.append(Paragraph(
+                f"<b>Answer:</b> {answer_text}",
+                styles["A"]
+            ))
+
+
+        if i % 5 == 0:
+            story.append(PageBreak())
+
+    doc.build(story)
+    buffer.seek(0)
+
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": "attachment; filename=bharatgen_questions.pdf"
+        }
+    )
+
+
+@app.get("/viewq", response_class=HTMLResponse, include_in_schema=False)
 def viewer():
     return """
-            <!DOCTYPE html>
-            <html>
-            <head>
-            <title>Questions Dashboard</title>
+<!DOCTYPE html>
+<html>
+<head>
+<title>Questions Dashboard</title>
 
-            <style>
-            body{
-            background:#f8fafc;
-            font-family:Arial;
-            padding:40px
-            }
+<style>
+body{
+background:#f8fafc;
+font-family:Arial;
+padding:40px
+}
 
-            .card{
-            background:white;
-            padding:25px;
-            border-radius:12px;
-            box-shadow:0 10px 25px rgba(0,0,0,.05)
-            }
+.card{
+background:white;
+padding:25px;
+border-radius:12px;
+box-shadow:0 10px 25px rgba(0,0,0,.05)
+}
 
-            /* ---------- TABLE STYLE ---------- */
+/* ---------- TABLE STYLE ---------- */
 
-            table{
-                width:100%;
-                border-collapse:separate;
-                border-spacing:0;
-                margin-top:10px;
-                overflow:hidden;
-                border-radius:12px;
-                background:white;
-            }
+table{
+    width:100%;
+    border-collapse:separate;
+    border-spacing:0;
+    margin-top:10px;
+    overflow:hidden;
+    border-radius:12px;
+    background:white;
+}
 
-            /* header */
-            th{
-                background:#f1f5f9;
-                color:#475569;
-                font-size:13px;
-                text-transform:uppercase;
-                letter-spacing:.5px;
-                padding:14px 12px;
-                border-bottom:1px solid #e2e8f0;
-            }
+/* header */
+th{
+    background:#f1f5f9;
+    color:#475569;
+    font-size:13px;
+    text-transform:uppercase;
+    letter-spacing:.5px;
+    padding:14px 12px;
+    border-bottom:1px solid #e2e8f0;
+}
 
-            /* cells */
-            td{
-                padding:14px 12px;
-                border-bottom:1px solid #f1f5f9;
-                font-size:14px;
-            }
+/* cells */
+td{
+    padding:14px 12px;
+    border-bottom:1px solid #f1f5f9;
+    font-size:14px;
+}
 
-            /* zebra striping */
-            tbody tr:nth-child(even){
-                background:#fafafa;
-            }
+/* zebra striping */
+tbody tr:nth-child(even){
+    background:#fafafa;
+}
 
-            /* hover effect */
-            tbody tr:hover{
-                background:#eef2ff;
-                transition:background .2s;
-            }
+/* hover effect */
+tbody tr:hover{
+    background:#eef2ff;
+    transition:background .2s;
+}
 
-            /* preview text look */
-            tbody td:nth-child(2){
-                color:#0f172a;
-                font-weight:500;
-            }
+/* preview text look */
+tbody td:nth-child(2){
+    color:#0f172a;
+    font-weight:500;
+}
 
-            /* alignment score badge look */
-            tbody td:nth-child(3){
-                font-weight:600;
-                color:#2563eb;
-            }
+/* alignment score badge look */
+tbody td:nth-child(3){
+    font-weight:600;
+    color:#2563eb;
+}
 
-            button{
-            background:#2563eb;
-            color:white;
-            border:none;
-            padding:6px 12px;
-            border-radius:6px;
-            cursor:pointer
-            }
+button{
+background:#2563eb;
+color:white;
+border:none;
+padding:6px 12px;
+border-radius:6px;
+cursor:pointer
+}
 
-            button:disabled{
-            opacity:.4
-            }
+button.secondary{
+background:#dc2626;
+}
 
-            #loadbtn{
-            margin-top:15px
-            }
+button:disabled{
+opacity:.4
+}
 
-            #status{
-            margin-top:10px;
-            color:#64748b
-            }
+#loadbtn{
+margin-top:15px
+}
 
-            .modal{
-                display:none;
-                position:fixed;
-                inset:0;
-                background:rgba(15,23,42,.55);
-                backdrop-filter:blur(4px);
-                align-items:center;
-                justify-content:center;
-                z-index:1000;
-            }
+#status{
+margin-top:10px;
+color:#64748b
+}
 
-            .modal-content{
-                background:white;
-                width:70%;
-                max-width:900px;
-                max-height:85vh;
-                overflow-y:auto;
-                border-radius:16px;
-                padding:32px;
-                box-shadow:0 20px 60px rgba(0,0,0,.25);
-                animation:fadeUp .25s ease;
-            }
+.modal{
+    display:none;
+    position:fixed;
+    inset:0;
+    background:rgba(15,23,42,.55);
+    backdrop-filter:blur(4px);
+    align-items:center;
+    justify-content:center;
+    z-index:1000;
+}
 
-            @keyframes fadeUp{
-                from{opacity:0; transform:translateY(20px)}
-                to{opacity:1; transform:translateY(0)}
-            }
+.modal-content{
+    background:white;
+    width:70%;
+    max-width:900px;
+    max-height:85vh;
+    overflow-y:auto;
+    border-radius:16px;
+    padding:32px;
+    box-shadow:0 20px 60px rgba(0,0,0,.25);
+    animation:fadeUp .25s ease;
+}
 
-            .close{
-                float:right;
-                cursor:pointer;
-                font-size:22px;
-                font-weight:bold;
-                color:#64748b;
-            }
+@keyframes fadeUp{
+    from{opacity:0; transform:translateY(20px)}
+    to{opacity:1; transform:translateY(0)}
+}
 
-            .close:hover{
-                color:#0f172a;
-            }
+.close{
+    float:right;
+    cursor:pointer;
+    font-size:22px;
+    font-weight:bold;
+    color:#64748b;
+}
 
-            .meta{
-                display:none;
-                color:#475569;
-                margin-top:16px;
-                padding-top:16px;
-                border-top:1px solid #e2e8f0;
-            }
+.close:hover{
+    color:#0f172a;
+}
 
-            </style>
-            </head>
+.meta{
+    display:none;
+    color:#475569;
+    margin-top:16px;
+    padding-top:16px;
+    border-top:1px solid #e2e8f0;
+}
+</style>
+</head>
 
-            <body>
+<body>
 
-            <div class="card">
+<div class="card">
 
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px">
-                <h2 style="margin:0">Questions</h2>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px">
+    <h2 style="margin:0">Questions</h2>
 
-                <button onclick="window.location.href='/'"
-                         style="
-                            background:#2563eb;
-                            color:white;
-                            border:none;
-                            padding:6px 14px;
-                            border-radius:6px;
-                            cursor:pointer;
-                        ">
-                    ← Home
-                </button>
-            </div>
+    <div style="display:flex;gap:10px">
+        <button class="secondary" onclick="downloadPDF()">⬇ Download PDF</button>
 
-            <table>
-            <thead>
+        <button onclick="window.location.href='/'">
+            ← Home
+        </button>
+    </div>
+</div>
+
+<table>
+<thead>
+<tr>
+<th>Q.No</th>
+<th>Question Preview</th>
+<th>Alignment</th>
+<th>Action</th>
+</tr>
+</thead>
+
+<tbody id="rows"></tbody>
+</table>
+
+<button id="loadbtn" onclick="load()">Load more</button>
+<div id="status"></div>
+
+</div>
+
+<div class="modal" id="modal">
+<div class="modal-content">
+<span class="close" onclick="closeModal()">×</span>
+<div id="modalBody"></div>
+</div>
+</div>
+
+<script>
+let offset=0;
+const limit=25;
+let qcounter=1;
+
+const rows=document.getElementById("rows");
+const status=document.getElementById("status");
+const loadbtn=document.getElementById("loadbtn");
+const modal=document.getElementById("modal");
+const modalBody=document.getElementById("modalBody");
+
+function prettyKey(k){
+    return k.replace(/_/g," ")
+            .replace(/\\b\\w/g,c=>c.toUpperCase());
+}
+
+function renderTable(obj){
+    let html = `<table style="width:100%;margin-top:10px;border-collapse:separate;border-spacing:0;background:#f8fafc;border-radius:10px;overflow:hidden;font-size:14px">`;
+
+    for(const k in obj){
+        const v = obj[k];
+        if(v !== null && v !== undefined){
+            html += `
             <tr>
-            <th>Q.No</th>
-            <th>Question Preview</th>
-            <th>Alignment</th>
-            <th>Action</th>
-            </tr>
-            </thead>
-
-            <tbody id="rows"></tbody>
-            </table>
-
-            <button id="loadbtn" onclick="load()">Load more</button>
-            <div id="status"></div>
-
-            </div>
-
-            <div class="modal" id="modal">
-            <div class="modal-content">
-            <span class="close" onclick="closeModal()">×</span>
-            <div id="modalBody"></div>
-            </div>
-            </div>
-
-            <script>
-
-            let offset=0;
-            const limit=25;
-            let qcounter=1;
-
-            const rows=document.getElementById("rows");
-            const status=document.getElementById("status");
-            const loadbtn=document.getElementById("loadbtn");
-            const modal=document.getElementById("modal");
-            const modalBody=document.getElementById("modalBody");
-
-            function prettyKey(k){
-                return k.replace(/_/g," ")
-                        .replace(/\b\w/g,c=>c.toUpperCase());
-                }
-
-                function renderTable(obj){
-                    let html = `
-                    <table style="
-                        width:100%;
-                        margin-top:10px;
-                        border-collapse:separate;
-                        border-spacing:0;
-                        background:#f8fafc;
-                        border-radius:10px;
-                        overflow:hidden;
-                        font-size:14px
-                    ">`;
-
-                    for(const k in obj){
-                        const v = obj[k];
-                        if(v !== null && v !== undefined){
-                            html += `
-                            <tr>
-                                <td style="
-                                    padding:10px 14px;
-                                    width:35%;
-                                    color:#475569;
-                                    font-weight:600;
-                                    border-bottom:1px solid #e2e8f0
-                                ">
-                                    ${prettyKey(k)}
-                                </td>
-                                <td style="
-                                    padding:10px 14px;
-                                    font-weight:500;
-                                    color:#0f172a;
-                                    border-bottom:1px solid #e2e8f0
-                                ">
-                                    ${v}
-                                </td>
-                            </tr>`;
-                        }
-                    }
-
-                    html += "</table>";
-                    return html;
-                }
-
-            function load(){
-            fetch(`/api/questions?offset=${offset}&limit=${limit}`)
-            .then(r=>r.json())
-            .then(data=>{
-            if(data.length===0){
-                status.textContent="All questions loaded.";
-                loadbtn.disabled=true;
-                return;
-            }
-
-            data.forEach(q=>{
-                const tr=document.createElement("tr");
-
-                const preview=q.question.substring(0,40)+"...";
-                const pct = Math.round((q.alignment_score/5)*100);
-
-                tr.innerHTML = `
-                <td>${qcounter++}</td>
-                <td>${preview}</td>
-                <td style="font-weight:600;color:${
-                    pct < 33 ? '#dc2626' :
-                    pct <= 66 ? '#ca8a04' :
-                    '#16a34a'
-                }">
-                    ${q.alignment_score}
+                <td style="padding:10px 14px;width:35%;color:#475569;font-weight:600;border-bottom:1px solid #e2e8f0">
+                    ${prettyKey(k)}
                 </td>
-                <td><button onclick="openModal('${q.id}')">View Details</button></td>
-                `;
+                <td style="padding:10px 14px;font-weight:500;color:#0f172a;border-bottom:1px solid #e2e8f0">
+                    ${v}
+                </td>
+            </tr>`;
+        }
+    }
 
-                rows.appendChild(tr);
-            });
+    html += "</table>";
+    return html;
+}
 
-            offset+=limit;
-            });
-            }
+function load(){
+fetch(`/api/questions?offset=${offset}&limit=${limit}`)
+.then(r=>r.json())
+.then(data=>{
+if(data.length===0){
+    status.textContent="All questions loaded.";
+    loadbtn.disabled=true;
+    return;
+}
 
-            function openModal(id){
-            fetch("/api/question/"+id)
-            .then(r=>r.json())
-            .then(q=>{
-            const pct=Math.round((q.alignment_score/5)*100);
+data.forEach(q=>{
+    const tr=document.createElement("tr");
+    const preview=q.question.substring(0,40)+"...";
+    const pct = Math.round((q.alignment_score/5)*100);
 
-            modalBody.innerHTML = `
-                <div style="margin-bottom:18px">
-                    <div style="font-size:18px;font-weight:600;color:#0f172a;margin-bottom:10px">
-                        ${q.question}
-                    </div>
+    tr.innerHTML = `
+    <td>${qcounter++}</td>
+    <td>${preview}</td>
+    <td style="font-weight:600;color:${
+        pct < 33 ? '#dc2626' :
+        pct <= 66 ? '#ca8a04' :
+        '#16a34a'
+    }">
+        ${q.alignment_score}
+    </td>
+    <td><button onclick="openModal('${q.id}')">View Details</button></td>
+    `;
+    rows.appendChild(tr);
+});
 
-                    <div style="color:#334155;background:#f8fafc;padding:14px;border-radius:10px">
-                        ${q.answer}
-                    </div>
+offset+=limit;
+});
+}
 
-                    <div style="margin-top:15px;font-weight:600;color:#2563eb">
-                        <div style="margin-top:15px">
+function openModal(id){
+fetch("/api/question/"+id)
+.then(r=>r.json())
+.then(q=>{
+const pct=Math.round((q.alignment_score/5)*100);
 
-                        <div style="
-                            font-weight:600;
-                            margin-bottom:6px;
-                            color:${
-                                pct < 33 ? '#dc2626' :
-                                pct <= 66 ? '#ca8a04' :
-                                '#16a34a'
-                            }
-                        ">
-                            Alignment Score: ${q.alignment_score}/5 (${pct}%)
-                        </div>
+modalBody.innerHTML = `
+<div style="margin-bottom:18px">
+    <div style="font-size:18px;font-weight:600;color:#0f172a;margin-bottom:10px">
+        ${q.question}
+    </div>
 
-                        <div style="
-                            width:100%;
-                            height:10px;
-                            background:#e2e8f0;
-                            border-radius:999px;
-                            overflow:hidden
-                        ">
-                            <div style="
-                                width:${pct}%;
-                                height:100%;
-                                background:${
-                                    pct < 33 ? '#dc2626' :
-                                    pct <= 66 ? '#eab308' :
-                                    '#22c55e'
-                                };
-                                transition:width .3s ease
-                            "></div>
-                        </div>
+    <div style="color:#334155;background:#f8fafc;padding:14px;border-radius:10px">
+        ${q.answer}
+    </div>
 
-                    </div>
-                    </div>
-                </div>
+    <div style="margin-top:15px;font-weight:600;color:#2563eb">
+        Alignment Score: ${q.alignment_score}/5 (${pct}%)
+    </div>
+</div>
 
-                <button onclick="toggle()"
-                        style="background:#2563eb;color:white;padding:8px 14px;border-radius:8px;border:none;margin-top:10px">
-                        Show Metadata
-                </button>
+<button onclick="toggle()" style="background:#2563eb;color:white;padding:8px 14px;border-radius:8px;border:none">
+Show Metadata
+</button>
 
-                <div class="meta" id="meta">
-                <hr>
+<div class="meta" id="meta">
+${renderTable(q.req)}
+${renderTable(q.scores)}
+</div>
+`;
 
-                <h4 style="margin-top:20px;color:#0f172a;font-size:15px">
-                Request Details
-                </h4>
-                ${renderTable(q.req)}
+modal.style.display="flex";
+});
+}
 
-               <h4 style="margin-top:20px;color:#0f172a;font-size:15px">
-                Evaluation Scores
-                </h4>
-                ${renderTable(q.scores)}
+function toggle(){
+const meta=document.getElementById("meta");
+meta.style.display=meta.style.display==="none"?"block":"none";
+}
 
-                </div>
-                `;
+function closeModal(){
+modal.style.display="none";
+}
 
-            modal.style.display="flex";
-            });
-            }
+window.onclick=function(e){
+if(e.target==modal) closeModal();
+}
 
-            function toggle(){
-            const meta=document.getElementById("meta");
-            meta.style.display=meta.style.display==="none"?"block":"none";
-            }
-
-            function closeModal(){
-            modal.style.display="none";
-            }
-
-            window.onclick=function(e){
-            if(e.target==modal) closeModal();
-            }
-
-            load();
-
-            </script>
-
-            </body>
-            </html>
-            """
+function downloadPDF(){
+window.open("/api/questions/download/pdf","_blank");
+}
+offset = 0;
+qcounter = 1;
+rows.innerHTML = "";
+load();
 
 
+</script>
 
+</body>
+</html>
+"""
 
 
 def detect_language(text: str) -> str:
