@@ -1333,7 +1333,7 @@ def _eval_vllm_b(req, q):
 
     return {
         "validity": round(validity_score,2),
-        "bloom": round(bloom_score,2),
+        "dok": round(bloom_score,2),
     }
 
 
@@ -1361,7 +1361,7 @@ def get_alignment_score(req, q):
 
     print(
         "===============Done generating Scores===="
-        f"Bloom : {result['bloom']} "
+        f"DoK : {result['dok']} "
         f"NCERT : {result['ncert']} "
         f"Guard : {result['guard']} "
         f"Validity : {result['validity']}===="
@@ -1388,7 +1388,7 @@ def process_scores_and_save(req, questions):
 
                 # q['question'] = q['question'] + '\n\n' + error_metadata
             else:
-                q['alignment_score']=round((scores['ncert']+scores['bloom'])/2,2)
+                q['alignment_score']=round((scores['ncert']+scores['dok'])/2,2)
             save_question(req, q, scores, q.get("alignment_score"))
 
         except Exception as e:
@@ -1479,7 +1479,7 @@ async def ask_llm(req: QueryRequest, background_tasks: BackgroundTasks):
                     q['alignment_score']=0.0
 
                 else:
-                    q['alignment_score']=round((scores['ncert']+scores['bloom'])/3,2)
+                    q['alignment_score']=round((scores['ncert']+scores['dok'])/3,2)
             
             print(f"Council flow completed. Generated {len(questions)} questions.\n")
             print(questions)
