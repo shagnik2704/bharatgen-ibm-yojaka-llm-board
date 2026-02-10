@@ -88,32 +88,57 @@ QUANTITY: {req.num_questions}
 '''
         print("\n============System===============\n",system_prompt,"\n============END===============\n")
         print("\n============User===============\n",user_prompt,"\n============END===============\n")
-        client = Client("https://1df79b03590242911b.gradio.live/")
-        result = client.predict(
-            message=user_prompt,
-            history=[],
-            system_prompt=system_prompt,
-            temp=0.7,
-            max_tok=2048,
-            top_p=0.9,
-            top_k=50,
-            api_name="/chat_fn"
-        )
-        result = result[0][-1]['content'][-1]['text']
-        try:
-            result = re.sub(r"<think>[\s\S]*?</think>", "", result)
-            result = result.split("<details style='margin-top:10px; font-size:0.85em; opacity:0.6;'><summary>🔍 Debug: Raw Response</summary>")[-1]
-        except Exception as e:
-            print(e)
-            pass 
-        print("\n============START===============\n",result,"\n============END===============\n")
-        return result
-    data = {
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": max_tokens,
+        
+        url = 'https://api.bharatgen.dev/v1/chat/completions'
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer bharatgen-secret-token-123" }
+        payload = {
+            "model": "param-17B SFT S1",
+            "temperature": 0,
+            "max_length": 2048,
+            "chat_template_kwargs": {
+                "enable_thinking": True
+            },
+            "messages": [
+                {
+                "role": "system",
+                "content": system_prompt
+                },
+                {
+                "role": "user",
+                "content": user_prompt
+                }
+            ]
             }
-    resp = requests.post(model_url, json=data, verify=False)
-    print(resp)
+        resp = requests.post(url, headers=headers, json=payload, verify=False)
+    else:   
+        # client = Client("https://1df79b03590242911b.gradio.live/")
+        # result = client.predict(
+        #     message=user_prompt,
+        #     history=[],
+        #     system_prompt=system_prompt,
+        #     temp=0.7,
+        #     max_tok=2048,
+        #     top_p=0.9,
+        #     top_k=50,
+        #     api_name="/chat_fn"
+        # )
+        # result = result[0][-1]['content'][-1]['text']
+        # try:
+        #     result = re.sub(r"<think>[\s\S]*?</think>", "", result)
+        #     result = result.split("<details style='margin-top:10px; font-size:0.85em; opacity:0.6;'><summary>🔍 Debug: Raw Response</summary>")[-1]
+        # except Exception as e:
+        #     print(e)
+        #     pass 
+        # print("\n============START===============\n",result,"\n============END===============\n")
+        # return result
+        data = {
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": max_tokens,
+                }
+        resp = requests.post(model_url, json=data, verify=False)
+        print(resp)
     try:
         resp=resp.json()
         resp=resp['choices'][0]['message']['content']
