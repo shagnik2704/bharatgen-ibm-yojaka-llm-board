@@ -8,6 +8,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
@@ -509,7 +510,7 @@
                     <label class="relative inline-flex items-center cursor-pointer">
                         <input type="checkbox" id="shuffleToggle" class="sr-only peer">
                         <div class="w-11 h-6 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"
-                            style="background: var(--btn-secondary-bg);"></div>
+                            ></div>
                     </label>
                 </div>
 
@@ -2012,8 +2013,9 @@ ${activeLanguage === 'hi' ? 'सभी' : 'ALL'}
             document.getElementById('qTypeLabel').innerText =
     getQuestionTypeLabel(q.category || "General Question");
 
-            document.getElementById('qContent').innerHTML = q.question;
-            document.getElementById('aContent').innerHTML = q.answer;
+            document.getElementById('qContent').innerHTML = marked.parse(q.question || "");
+        document.getElementById('aContent').innerHTML = marked.parse(q.answer || "");
+
             document.getElementById('aContent').classList.add('hidden');
             document.getElementById('progressBar').innerText =
     activeLanguage === 'hi'
