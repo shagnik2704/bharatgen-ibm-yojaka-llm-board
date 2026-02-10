@@ -720,11 +720,12 @@ async def receive_user_chat_form(
         html_content = f.read()
 
     # Inject form data as a script tag before </body>
+    print(class_level,type(class_level))
     form_data = {
         'subject': subject,
         'language': language,
         'class': class_level,
-        'chapter': chapter,
+        'chapter': 'Science' if(class_level=='10') else chapter,
         'context': context
     }
 

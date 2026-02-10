@@ -344,6 +344,10 @@
                 alert("Please select subject, class, and chapter");
                 return;
             }
+            if(activeClass==10)
+            {
+                activeSubject='Science';
+            }
             btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> LOADING...';
             btn.disabled = true;
             try {
