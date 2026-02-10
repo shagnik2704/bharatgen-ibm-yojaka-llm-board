@@ -175,6 +175,7 @@ async def run_model(model_id: str, prompt: str, context_chunks: tuple = None, re
         "groq-Qwen3-32B":('qwen/qwen3-32b',32768),
         "Qwen3-32B":(" https://model-serve-qwen3-32b.impactsummit.nxtgen.cloud/v1/chat/completions",32768),
         "Param-17B":("https://param5b.impactsummit.nxtgen.cloud/v1/chat/completions",2048),
+        "Param-17B-IBM-RAG":("https://param5b.impactsummit.nxtgen.cloud/v1/chat/completions",2048),
         "rag-piped-groq-70b": ("llama-3.3-70b-versatile", 32768),
         "groq-llama-guard": ("meta-llama/llama-guard-4-12b", 1024),
         "groq-gpt-oss-120b": ("openai/gpt-oss-120b", 65536),
@@ -207,7 +208,7 @@ async def run_model(model_id: str, prompt: str, context_chunks: tuple = None, re
 def needs_rag(model_id: str) -> bool:
     """Check if a model requires RAG context."""
     # return model_id in ["rag-piped-llama", "rag-piped-param-instruct", "rag-piped-groq-70b"]
-    return True
+    return model_id=='Param-17B-IBM-RAG'
     # return model_id == "rag-piped-groq-70b"
 
 def get_rag_context(subject:str, class_level:str, chapter: str, theme: str, language: str = "en") -> tuple:
