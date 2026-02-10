@@ -389,8 +389,8 @@
                     </label>
                     <select id="chairmanSelect" class="w-full rounded-xl p-4 text-sm outline-none transition-all"
                         style="background: var(--bg-secondary); border: 1px solid var(--card-border); color: var(--text-primary);">
-                        <option value="Param-17B">Param-17B</option>
                         <option value="Param-17B-IBM-RAG">Param-17B-IBM-RAG</option>
+                        <option value="Param-17B">Param-17B</option>
                         <option value="Qwen3-32B">Qwen3-32B</option>
                     </select>
                 </div>
@@ -1507,13 +1507,14 @@ function toHindiNumber(num) {
 
 
 
-        let currentChairman = "Param-17B"; // Temporarily set to Groq default
-        let currentMembers = ["Param-17B"]; // Temporarily set to Groq default
+        let currentChairman = "Param-17B-IBM-RAG"; // Temporarily set to Groq default
+        let currentMembers = ["Param-17B-IBM-RAG"]; // Temporarily set to Groq default
 
         const availableModels = [
+
+            { id: "Param-17B-IBM-RAG", name: "Param-17B-IBM-RAG" },
             { id: "Qwen3-32B", name: "Qwen3-32B" },
             { id: "Param-17B", name: "Param 17B" },
-            { id: "Param-17B-IBM-RAG", name: "Param-17B-IBM-RAG" },
             
         ];
 
