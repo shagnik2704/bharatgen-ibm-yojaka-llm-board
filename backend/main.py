@@ -1593,8 +1593,8 @@ async def ask_llm(req: QueryRequest, background_tasks: BackgroundTasks):
             print(context_chunks)
             questions = parse_ai_output(raw_output)
             try:
-                if(questions>req.num_questions):
-                    questions=question[:req.num_questions]
+                if(len(questions)>req.num_questions):
+                    questions=questions[:req.num_questions]
             except:
                 pass
             for q in questions:
