@@ -98,7 +98,7 @@ QUANTITY: {req.num_questions}
             "Authorization": "Bearer bharatgen-secret-token-123" }
         payload = {
             "model": "param-17B SFT S1",
-            "temperature": 0,
+            "temperature": 0.4,
             "max_length": 2048,
             "chat_template_kwargs": {
                 "enable_thinking": True

@@ -721,11 +721,11 @@ async def receive_user_chat_form(
 
     # Inject form data as a script tag before </body>
     print(class_level,type(class_level))
-    if(class_level=='10' ):
-        if(subject!='Math'):
-            subject='Science'
-        else:
-            subject='Maths'
+    if('Math' in subject):
+        subject='Maths'
+    elif(class_level=='10'):
+        subject='Science'
+            
     form_data = {
         'subject': subject,
         'language': language,
@@ -1592,6 +1592,11 @@ async def ask_llm(req: QueryRequest, background_tasks: BackgroundTasks):
             # print(raw_output + "\n")
             print(context_chunks)
             questions = parse_ai_output(raw_output)
+            try:
+                if(questions>req.num_questions):
+                    questions=question[:req.num_questions]
+            except:
+                pass
             for q in questions:
                 # if(scores['guard']<1.5 or scores['validity']<1.5 or scores['qtype']<1.5 or scores['language']<1.5):
                 #     q['alignment_score']=0.1

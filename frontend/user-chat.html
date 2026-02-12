@@ -345,16 +345,13 @@
                 return;
             }
             
-            if(activeClass==10)
+            if(activeSubject=="Math")
             {
-                if(activeSubject=="Math")
-                {
-                    activeSubject='Maths';
-                }
-                else{
-                    activeSubject='Science';
-                }
-                
+                activeSubject='Maths';
+            }
+            else if(activeClass==10)
+            {
+               activeSubject='Science';                
             }
 
             btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> LOADING...';
