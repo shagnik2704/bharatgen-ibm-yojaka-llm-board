@@ -661,7 +661,7 @@ async def chat_completions(body: ChatCompletionRequest):
     """
     import httpx
 
-    chat_url = os.getenv("CHAT_COMPLETION_URL", "https://model-serve-chat.impactsummit.nxtgen.cloud/v1/chat/completions")
+    chat_url = os.getenv("CHAT_COMPLETION_URL", "https://model-serve-param-2-9.impactsummit.nxtgen.cloud/v1/chat/completions")
 
     try:
         messages = []

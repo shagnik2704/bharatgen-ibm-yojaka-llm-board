@@ -6,6 +6,8 @@
     <title>BharatGen - User Chat</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/simple-keyboard@latest/build/css/index.css">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;700&display=swap" rel="stylesheet">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
 
@@ -105,7 +107,8 @@
         .custom-scroll::-webkit-scrollbar-track { background: var(--scrollbar-track); border-radius: 10px; }
         .custom-scroll::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 10px; }
 
-        .chat-container { display: flex; flex-direction: column; height: 600px; }
+        .chat-container { display: flex; flex-direction: column; height: 70vh; max-height: 800px; transition: padding-bottom 0.3s ease; }
+        .chat-container.keyboard-open { padding-bottom: 150px; }
         .chat-header { padding: 1.5rem; border-bottom: 1px solid var(--card-border); display: flex; align-items: center; gap: 1rem; }
         .chat-messages { flex: 1; overflow-y: auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
         .message { padding: 1rem 1.25rem; border-radius: 1.25rem; max-width: 75%; word-wrap: break-word; line-height: 1.6; }
@@ -122,7 +125,7 @@
         .message.typing span:nth-child(2) { animation-delay: 0.2s; }
         .message.typing span:nth-child(3) { animation-delay: 0.4s; }
         @keyframes typing { 0%, 60%, 100% { opacity: 0.3; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-10px); } }
-        .chat-input-container { padding: 1.5rem; border-top: 1px solid var(--card-border); display: flex; gap: 0.75rem; align-items: flex-end; }
+        .chat-input-container { padding: 1rem; border-top: 1px solid var(--card-border); display: flex; flex-direction: column; gap: 0; }
         .chat-input { flex: 1; padding: 0.875rem 1.25rem; border-radius: 1.5rem; resize: none; font-family: inherit; max-height: 120px; }
         .send-button { padding: 0.875rem; border-radius: 50%; background: var(--accent-primary); color: white; border: none; cursor: pointer; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; }
         .send-button:hover:not(:disabled) { background: var(--accent-primary-hover); transform: scale(1.05); }
@@ -144,19 +147,144 @@
         .modal-context-content pre { background: var(--bg-secondary); padding: 0.75rem; border-radius: 0.5rem; overflow-x: auto; margin: 0.5rem 0; }
         .modal-context-content code { background: var(--bg-secondary); padding: 0.2rem 0.4rem; border-radius: 0.25rem; font-size: 0.9em; font-family: monospace; }
         .modal-context-content pre code { background: transparent; padding: 0; }
+
+        /* Virtual Keyboard Styles */
+        .simple-keyboard {
+            font-family: 'Noto Sans Devanagari', 'Plus Jakarta Sans', sans-serif;
+            background-color: transparent;
+            padding: 0;
+        }
+
+        .simple-keyboard .hg-row {
+            margin-bottom: 0.375rem;
+        }
+
+        .simple-keyboard .hg-button {
+            height: 38px;
+            font-size: 14px;
+            font-weight: 500;
+            background: var(--input-bg);
+            color: var(--text-primary);
+            border: 1px solid var(--input-border);
+            border-radius: 0.375rem;
+            box-shadow: none;
+            margin: 2px;
+        }
+
+        .simple-keyboard .hg-button:active {
+            background: var(--accent-primary-light);
+            color: var(--accent-primary);
+            transform: scale(0.95);
+        }
+
+        .simple-keyboard .hg-button.hg-functionBtn {
+            background: var(--btn-secondary-bg);
+            color: var(--text-secondary);
+            font-size: 12px;
+        }
+
+        .simple-keyboard .hg-button.hg-functionBtn:active {
+            background: var(--accent-primary);
+            color: var(--text-inverse);
+        }
+
+        .input-row {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            width: 100%;
+        }
+
+        .language-toggle {
+            display: flex;
+            gap: 0.25rem;
+            background: var(--input-bg);
+            border: 1px solid var(--input-border);
+            border-radius: 0.75rem;
+            padding: 0.25rem;
+            flex-shrink: 0;
+        }
+
+        .language-toggle button {
+            padding: 0.5rem 0.75rem;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-size: 0.75rem;
+            font-weight: 600;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .language-toggle button.active {
+            background: var(--accent-primary);
+            color: var(--text-inverse);
+        }
+
+        .keyboard-container {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 900px;
+            padding: 1rem;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-bottom: none;
+            border-radius: 1rem 1rem 0 0;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+            z-index: 100;
+            height: 240px;
+        }
+
+        .keyboard-container.show {
+            display: block;
+        }
+
+        .keyboard-close-btn {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: var(--btn-secondary-bg);
+            color: var(--text-secondary);
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+
+        .keyboard-close-btn:hover {
+            background: var(--accent-primary);
+            color: var(--text-inverse);
+        }
     </style>
 </head>
 <body class="min-h-screen p-4 md:p-10 flex flex-col">
     <header class="max-w-6xl mx-auto w-full flex justify-between items-center mb-8">
         <div class="flex items-center gap-5">
-            <img src="/static/logo/BharatGen.svg" alt="BharatGen" class="h-8 logo-img">
+            <img src="/static/logo/BharatGen.svg" alt="BharatGen" class="h-8 logo-img" style="height:3.5rem;">
             <img src="/static/logo/IBM.svg" alt="IBM" class="h-8 logo-img">
             <img src="/static/logo/nxtgen.svg" alt="NextGen" class="h-8 logo-img">
         </div>
         <div class="flex items-center gap-4">
-            <button onclick="window.location.href='/'" class="w-10 h-10 glass-panel rounded-xl flex items-center justify-center" style="color: var(--text-secondary);" title="Back to Home"><i class="fa-solid fa-home"></i></button>
-            <button onclick="toggleSettings()" class="w-10 h-10 glass-panel rounded-xl flex items-center justify-center" style="color: var(--text-secondary);" title="Settings"><i class="fa-solid fa-gear"></i></button>
-            <button onclick="toggleTheme()" class="w-10 h-10 glass-panel rounded-xl flex items-center justify-center" style="color: var(--text-secondary);" title="Toggle theme"><i id="themeIcon" class="fa-solid fa-moon"></i></button>
+            <div class="hidden md:flex flex-col items-end">
+                <span class="text-[10px] uppercase font-bold tracking-widest" style="color: var(--text-muted);">
+                    Active Engine
+                </span>
+                <span id="currentModelLabel" class="text-sm font-medium" style="color: var(--text-secondary);">Model: Param2.9B-IBM-RAG</span>
+            </div>
+            <button onclick="window.location.href='/'" class="w-10 h-10 glass-panel rounded-xl flex items-center justify-center" style="color: var(--text-secondary);" title="Back to Home" id="homeBtn"><i class="fa-solid fa-home"></i></button>
+            <button onclick="toggleSettings()" class="w-10 h-10 glass-panel rounded-xl flex items-center justify-center" style="color: var(--text-secondary);" title="Settings" id="settingsBtn"><i class="fa-solid fa-gear"></i></button>
+            <button onclick="toggleTheme()" class="w-10 h-10 glass-panel rounded-xl flex items-center justify-center" style="color: var(--text-secondary);" title="Toggle theme" id="themeBtn"><i id="themeIcon" class="fa-solid fa-moon"></i></button>
         </div>
     </header>
 
@@ -167,9 +295,7 @@
                 <div>
                     <label class="text-xs font-bold uppercase tracking-wider mb-2 block" style="color: var(--text-secondary);">Select Model</label>
                     <select id="modelSelect" class="w-full rounded-xl p-4 text-sm outline-none transition-all" style="background: var(--bg-secondary); border: 1px solid var(--card-border); color: var(--text-primary);">
-                        <option value="ibm-granite/granite-3.3-8b-instruct">IBM Granite 3.3 8B Instruct</option>
-                        <option value="meta-llama/Llama-3.2-3B">Meta Llama 3.2 3B</option>
-                        <option value="qwen/qwen-2.5-7b-instruct">Qwen 2.5 7B Instruct</option>
+                        <option selected value="bharatgenai/Param-1-2.9B-Instruct">Param2.9B-IBM-RAG</option>
                     </select>
                 </div>
             </div>
@@ -207,6 +333,23 @@
         </div>
     </div>
 
+    <!-- Reset Chat Confirmation Modal -->
+    <div id="resetChatModal" class="hidden fixed inset-0 z-50 flex items-center justify-center backdrop-blur-md" style="background: rgba(0, 0, 0, 0.5);">
+        <div class="glass-panel p-8 rounded-3xl w-full max-w-md">
+            <div class="flex flex-col items-center text-center mb-6">
+                <div class="w-16 h-16 rounded-full flex items-center justify-center mb-4" style="background: var(--accent-primary-light);">
+                    <i class="fa-solid fa-rotate-right text-2xl" style="color: var(--accent-primary);"></i>
+                </div>
+                <h3 class="font-bold text-lg mb-2" style="color: var(--text-primary);" id="resetModalTitle">Reset Chat?</h3>
+                <p class="text-sm" style="color: var(--text-secondary);" id="resetModalMessage">Are you sure you want to reset the chat?</p>
+            </div>
+            <div class="flex gap-3">
+                <button onclick="cancelResetChat()" id="resetCancelBtn" class="flex-1 btn-secondary py-4 rounded-xl font-bold">Cancel</button>
+                <button onclick="confirmResetChat()" id="resetConfirmBtn" class="flex-1 btn-primary py-4 rounded-xl font-bold">Reset</button>
+            </div>
+        </div>
+    </div>
+
     <main class="max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-8">
         <aside class="lg:col-span-4 space-y-4">
             <div class="glass-panel p-6 rounded-3xl space-y-6">
@@ -232,6 +375,12 @@
                     </select>
                 </div>
                 <button onclick="startChat()" id="startChatBtn" class="w-full btn-primary py-5 rounded-2xl font-bold text-sm tracking-wider transition-all">START CHAT</button>
+                <div id="startChatError" class="hidden" style="padding: 0.75rem; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 0.75rem; margin-top: 0.75rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <i class="fa-solid fa-circle-exclamation" style="color: #ef4444;"></i>
+                        <span id="startChatErrorText" style="color: #ef4444; font-size: 0.875rem; font-weight: 500;"></span>
+                    </div>
+                </div>
             </div>
         </aside>
 
@@ -245,7 +394,7 @@
                 <div id="chatInterface" class="hidden" style="display: flex; flex-direction: column; height: 100%;">
                     <div class="chat-header">
                         <div class="flex-1">
-                            <div id="contextBadge" class="hidden" style="display: flex; flex-direction: column; gap: 0.25rem;">
+                            <div id="contextBadge" class="hidden" style="flex-direction: column; gap: 0.25rem;">
                                 <div style="display: flex; align-items: center; gap: 0.5rem;">
                                     <i class="fa-solid fa-circle-check" style="color: var(--accent-secondary);"></i>
                                     <span id="contextInfo" style="font-weight: 600; color: var(--text-primary); font-size: 0.875rem;">Context Loaded</span>
@@ -258,15 +407,30 @@
                     </div>
                     <div id="chatMessages" class="chat-messages custom-scroll"></div>
                     <div id="chatInputContainer" class="chat-input-container hidden">
-                        <textarea id="chatInput" class="chat-input custom-scroll" placeholder="Type your message here..." rows="1" onkeypress="handleKeyPress(event)" oninput="autoResize(this)"></textarea>
-                        <button id="sendBtn" class="send-button" onclick="sendMessage()"><i class="fa-solid fa-paper-plane"></i></button>
+                        <div class="input-row">
+                            <div class="language-toggle" id="inputLanguageToggle" style="display: none;">
+                                <button id="askInEnglishBtn" class="active" onclick="toggleInputLanguage('en')">EN</button>
+                                <button id="askInHindiBtn" onclick="toggleInputLanguage('hi')">हिं</button>
+                            </div>
+                            <textarea id="chatInput" class="chat-input custom-scroll" placeholder="Type your message here..." rows="1" onkeypress="handleKeyPress(event)" oninput="autoResize(this)"></textarea>
+                            <button id="sendBtn" class="send-button" onclick="sendMessage()"><i class="fa-solid fa-paper-plane"></i></button>
+                        </div>
                     </div>
                 </div>
             </div>
         </section>
     </main>
 
+    <!-- Fixed Virtual Keyboard -->
+    <div id="keyboardContainer" class="keyboard-container">
+        <button class="keyboard-close-btn" onclick="closeKeyboard()">
+            <i class="fa-solid fa-xmark"></i>
+        </button>
+        <div class="simple-keyboard"></div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/simple-keyboard@latest/build/index.min.js"></script>
     <script>
         function initTheme() {
             const savedTheme = localStorage.getItem('theme') || 'light';
@@ -286,11 +450,114 @@
         }
         function toggleSettings() { document.getElementById('settingsModal').classList.toggle('hidden'); }
         function toggleContextModal() { document.getElementById('contextModal').classList.toggle('hidden'); }
+        function toggleResetChatModal() {
+            const modal = document.getElementById('resetChatModal');
+            modal.classList.toggle('hidden');
+        }
+        function cancelResetChat() {
+            toggleResetChatModal();
+        }
+        function confirmResetChat() {
+            toggleResetChatModal();
+            performResetChat();
+        }
         initTheme();
 
-        let activeSubject = "", activeLanguage = "en", activeClass = "", selectedModel = "ibm-granite/granite-3.3-8b-instruct";
+        let activeSubject = "", activeLanguage = "en", activeClass = "", selectedModel = "bharatgenai/Param-1-2.9B-Instruct";
         let contextLoaded = false, systemContext = "", messageHistory = [];
         let contextData = null; // Store full context data from reference API
+        let inputLanguage = 'en'; // Language for typing in chat (en or hi)
+        let virtualKeyboard = null; // Virtual keyboard instance
+
+        // UI Translations
+        const uiTranslations = {
+            hi: {
+                subjects: {
+                    Math: "गणित",
+                    Physics: "भौतिकी",
+                    Chemistry: "रसायन विज्ञान",
+                    Biology: "जीवविज्ञान"
+                },
+                ui: {
+                    settings: "सेटिंग्स",
+                    toggleTheme: "थीम बदलें",
+                    backToHome: "होम पर वापस जाएं",
+                    chatModelConfig: "चैट मॉडल कॉन्फ़िगरेशन",
+                    selectModel: "मॉडल चुनें",
+                    applyClose: "लागू करें और बंद करें",
+                    contextDetails: "संदर्भ विवरण",
+                    close: "बंद करें",
+                    documentInfo: "दस्तावेज़ जानकारी",
+                    filename: "फ़ाइल का नाम",
+                    pageNumbers: "पृष्ठ संख्या",
+                    chunkId: "खंड आईडी",
+                    type: "प्रकार",
+                    retrievedContext: "पुनर्प्राप्त संदर्भ",
+                    selectClass: "कक्षा चुनें",
+                    class10: "कक्षा १०",
+                    class11: "कक्षा ११",
+                    class12: "कक्षा १२",
+                    selectChapter: "अध्याय चुनें",
+                    startChat: "चैट शुरू करें",
+                    loading: "लोड हो रहा है...",
+                    welcomeTitle: "एआई शिक्षक चैट में आपका स्वागत है",
+                    welcomeSubtitle: "साइडबार से अपना विषय, कक्षा और अध्याय चुनें, फिर शुरू करने के लिए 'चैट शुरू करें' पर क्लिक करें।",
+                    contextLoaded: "संदर्भ लोड किया गया",
+                    viewContext: "संदर्भ विवरण देखें",
+                    resetChat: "चैट रीसेट करें",
+                    selectSubjectClassChapter: "कृपया विषय, कक्षा और अध्याय चुनें",
+                    resetConfirm: "क्या आप वाकई चैट रीसेट करना चाहते हैं?",
+                    fromFormSubmission: "फॉर्म सबमिशन से",
+                    cancel: "रद्द करें",
+                    reset: "रीसेट करें"
+                },
+                topics: {
+                    // Math topics
+                    "Algebra": "बीजगणित",
+                    "Geometry": "ज्यामिति",
+                    "Trigonometry": "त्रिकोणमिति",
+                    "Mensuration": "मापन",
+                    "Statistics": "सांख्यिकी",
+                    "Calculus": "कलन",
+                    "Probability": "प्रायिकता",
+                    "VectorsAnd3D": "सदिश एवं त्रिविमीय ज्यामिति",
+                    "LinearProgramming": "रैखिक प्रोग्रामन",
+                    "RelationsAndFunctions": "संबंध एवं फलन",
+                    // Physics topics
+                    "Mechanics": "यांत्रिकी",
+                    "Energy": "ऊर्जा",
+                    "Optics": "प्रकाशिकी",
+                    "Electricity": "विद्युत",
+                    "PropertiesOfMatter": "द्रव्य के गुण",
+                    "Thermodynamics": "ऊष्मागतिकी",
+                    "OscillationsAndWaves": "दोलन एवं तरंगें",
+                    "Electrostatics": "स्थिर वैद्युत",
+                    "CurrentElectricity": "धारा विद्युत",
+                    "Magnetism": "चुंबकत्व",
+                    "ElectromagneticInduction": "विद्युतचुंबकीय प्रेरण",
+                    "ElectromagneticWaves": "विद्युतचुंबकीय तरंगें",
+                    "DualNatureAndAtoms": "द्वैध प्रकृति एवं परमाणु",
+                    "Electronics": "इलेक्ट्रॉनिकी",
+                    // Chemistry topics
+                    "Physical": "भौतिक",
+                    "Inorganic": "अकार्बनिक",
+                    "Organic": "कार्बनिक",
+                    "Environmental": "पर्यावरणीय",
+                    // Biology topics
+                    "LifeProcesses": "जीवन प्रक्रियाएँ",
+                    "Environment": "पर्यावरण",
+                    "Diversity": "विविधता",
+                    "CellBiology": "कोशिका जीवविज्ञान",
+                    "PlantPhysiology": "पादप शरीरक्रिया",
+                    "HumanPhysiology": "मानव शरीरक्रिया",
+                    "Reproduction": "प्रजनन",
+                    "GeneticsAndEvolution": "आनुवंशिकी एवं विकास",
+                    "BiologyAndHumanWelfare": "जीवविज्ञान एवं मानव कल्याण",
+                    "Biotechnology": "जैव प्रौद्योगिकी",
+                    "Ecology": "पारिस्थितिकी"
+                }
+            }
+        };
 
         // Inline chapter map
         if (typeof window.CHAPTER_MAP === 'undefined') {
@@ -304,9 +571,257 @@
         });
         document.getElementById('languageDropdown').addEventListener('change', function() {
             activeLanguage = this.value;
+            updateAllUIText();
             if (activeSubject && activeClass) loadChaptersFromMap();
         });
         document.getElementById('modelSelect').addEventListener('change', function() { selectedModel = this.value; });
+
+        // Update all UI text based on selected language
+        function updateAllUIText() {
+            updateSubjectButtons();
+            updateClassDropdown();
+            updateChapterDropdown();
+            updateStartChatButton();
+            updateWelcomeText();
+            updateModalText();
+            updateHeaderButtons();
+            updateChatPlaceholder();
+            updateInputLanguageToggle();
+        }
+
+        function updateInputLanguageToggle() {
+            const toggle = document.getElementById('inputLanguageToggle');
+            if (toggle) {
+                // Show toggle only when UI language is Hindi
+                if (activeLanguage === 'hi') {
+                    toggle.style.display = 'flex';
+                } else {
+                    toggle.style.display = 'none';
+                    // Also close keyboard if it's open
+                    closeKeyboard();
+                }
+            }
+        }
+
+        function updateSubjectButtons() {
+            document.querySelectorAll('.subj-btn').forEach(btn => {
+                const subject = btn.getAttribute('data-subject');
+                if (activeLanguage === 'hi' && uiTranslations.hi.subjects[subject]) {
+                    btn.innerText = uiTranslations.hi.subjects[subject];
+                } else {
+                    btn.innerText = subject.toUpperCase();
+                }
+            });
+        }
+
+        function updateClassDropdown() {
+            const dropdown = document.getElementById('classDropdown');
+            const options = dropdown.options;
+            if (activeLanguage === 'hi') {
+                options[0].text = uiTranslations.hi.ui.selectClass;
+                options[1].text = uiTranslations.hi.ui.class10;
+                options[2].text = uiTranslations.hi.ui.class11;
+                options[3].text = uiTranslations.hi.ui.class12;
+            } else {
+                options[0].text = 'Select Class';
+                options[1].text = 'Class 10';
+                options[2].text = 'Class 11';
+                options[3].text = 'Class 12';
+            }
+        }
+
+        function updateChapterDropdown() {
+            const dropdown = document.getElementById('chapterDropdown');
+            if (dropdown.options.length > 0 && dropdown.options[0].value === '') {
+                dropdown.options[0].text = activeLanguage === 'hi' ? uiTranslations.hi.ui.selectChapter : 'Select Chapter';
+            }
+        }
+
+        function updateStartChatButton() {
+            const btn = document.getElementById('startChatBtn');
+            if (btn && !btn.disabled) {
+                btn.innerText = activeLanguage === 'hi' ? uiTranslations.hi.ui.startChat : 'START CHAT';
+            }
+        }
+
+        function updateWelcomeText() {
+            const title = document.querySelector('#welcomeState h2');
+            const subtitle = document.querySelector('#welcomeState p');
+            if (title && subtitle) {
+                if (activeLanguage === 'hi') {
+                    title.innerText = uiTranslations.hi.ui.welcomeTitle;
+                    subtitle.innerText = uiTranslations.hi.ui.welcomeSubtitle;
+                } else {
+                    title.innerText = 'Welcome to AI Tutor Chat';
+                    subtitle.innerText = 'Select your subject, class, and chapter from the sidebar, then click "Start Chat" to begin.';
+                }
+            }
+        }
+
+        function updateModalText() {
+            // Settings modal
+            const settingsTitle = document.querySelector('#settingsModal h3');
+            const modelLabel = document.querySelector('#settingsModal label');
+            const applyBtn = document.querySelector('#settingsModal button[onclick="toggleSettings()"]');
+
+            if (settingsTitle && modelLabel && applyBtn) {
+                if (activeLanguage === 'hi') {
+                    settingsTitle.innerText = uiTranslations.hi.ui.chatModelConfig;
+                    modelLabel.innerText = uiTranslations.hi.ui.selectModel;
+                    applyBtn.innerText = uiTranslations.hi.ui.applyClose;
+                } else {
+                    settingsTitle.innerText = 'Chat Model Configuration';
+                    modelLabel.innerText = 'Select Model';
+                    applyBtn.innerText = 'Apply & Close';
+                }
+            }
+
+            // Context modal
+            const contextTitle = document.querySelector('#contextModal h3');
+            const contextLabels = document.querySelectorAll('#contextModal label');
+            const contextCloseBtn = document.querySelector('#contextModal button[onclick="toggleContextModal()"]');
+
+            if (contextTitle && contextCloseBtn) {
+                if (activeLanguage === 'hi') {
+                    contextTitle.innerText = uiTranslations.hi.ui.contextDetails;
+                    contextCloseBtn.innerText = uiTranslations.hi.ui.close;
+                    if (contextLabels[1]) contextLabels[1].innerText = uiTranslations.hi.ui.retrievedContext;
+                } else {
+                    contextTitle.innerText = 'Context Details';
+                    contextCloseBtn.innerText = 'Close';
+                    if (contextLabels[1]) contextLabels[1].innerText = 'Retrieved Context';
+                }
+            }
+        }
+
+        function updateHeaderButtons() {
+            const homeBtn = document.getElementById('homeBtn');
+            const settingsBtn = document.getElementById('settingsBtn');
+            const themeBtn = document.getElementById('themeBtn');
+            const viewContextBtn = document.getElementById('viewContextBtn');
+            const resetBtn = document.querySelector('button[onclick="resetChat()"]');
+
+            if (homeBtn) homeBtn.title = activeLanguage === 'hi' ? uiTranslations.hi.ui.backToHome : 'Back to Home';
+            if (settingsBtn) settingsBtn.title = activeLanguage === 'hi' ? uiTranslations.hi.ui.settings : 'Settings';
+            if (themeBtn) themeBtn.title = activeLanguage === 'hi' ? uiTranslations.hi.ui.toggleTheme : 'Toggle theme';
+            if (viewContextBtn) viewContextBtn.title = activeLanguage === 'hi' ? uiTranslations.hi.ui.viewContext : 'View Context Details';
+            if (resetBtn) resetBtn.title = activeLanguage === 'hi' ? uiTranslations.hi.ui.resetChat : 'Reset Chat';
+        }
+
+        function updateChatPlaceholder() {
+            const input = document.getElementById('chatInput');
+            if (input) {
+                // Always keep placeholder in English since user cannot type Hindi
+                input.placeholder = 'Type your message here...';
+            }
+        }
+
+        // Virtual Keyboard Setup
+        function initVirtualKeyboard() {
+            if (!window.SimpleKeyboard) return;
+
+            const Keyboard = window.SimpleKeyboard.default;
+
+            // Hindi keyboard layout (Inscript-like)
+            const hindiLayout = {
+                default: [
+                    "1 2 3 4 5 6 7 8 9 0 - {bksp}",
+                    "ौ ै ा ी ू ब ह ग द ज ड ़",
+                    "ो े ् ि ु प र क त च ट ॅ",
+                    "{shift} ॉ ं म न व ल स , . य {shift}",
+                    "{space}"
+                ],
+                shift: [
+                    "! @ # $ % ^ & * ( ) _ {bksp}",
+                    "औ ऐ आ ई ऊ भ ङ घ ध झ ढ ञ",
+                    "ओ ए अ इ उ फ ऱ ख थ छ ठ ऑ",
+                    "{shift} ऍ ः ण ऩ ळ ऴ श ष । ? {shift}",
+                    "{space}"
+                ]
+            };
+
+            virtualKeyboard = new Keyboard({
+                onChange: input => onKeyboardChange(input),
+                onKeyPress: button => onKeyPress(button),
+                layout: hindiLayout,
+                display: {
+                    "{bksp}": "⌫ Backspace",
+                    "{shift}": "⇧ Shift",
+                    "{space}": "Space"
+                },
+                theme: "hg-theme-default"
+            });
+        }
+
+        function onKeyboardChange(input) {
+            document.getElementById('chatInput').value = input;
+            autoResize(document.getElementById('chatInput'));
+        }
+
+        function onKeyPress(button) {
+            if (button === "{shift}") {
+                handleShift();
+            }
+        }
+
+        function handleShift() {
+            let currentLayout = virtualKeyboard.options.layoutName;
+            let shiftToggle = currentLayout === "default" ? "shift" : "default";
+            virtualKeyboard.setOptions({
+                layoutName: shiftToggle
+            });
+        }
+
+        function toggleInputLanguage(lang) {
+            inputLanguage = lang;
+            const keyboardContainer = document.getElementById('keyboardContainer');
+            const askInEnglishBtn = document.getElementById('askInEnglishBtn');
+            const askInHindiBtn = document.getElementById('askInHindiBtn');
+            const chatContainer = document.querySelector('.chat-container');
+
+            if (lang === 'hi') {
+                // Show keyboard
+                keyboardContainer.classList.add('show');
+                askInHindiBtn.classList.add('active');
+                askInEnglishBtn.classList.remove('active');
+
+                // Add padding to chat container to prevent overlap
+                if (chatContainer) {
+                    chatContainer.classList.add('keyboard-open');
+                }
+
+                // Initialize keyboard if not already done
+                if (!virtualKeyboard) {
+                    initVirtualKeyboard();
+                }
+            } else {
+                // Hide keyboard
+                keyboardContainer.classList.remove('show');
+                askInEnglishBtn.classList.add('active');
+                askInHindiBtn.classList.remove('active');
+
+                // Remove padding from chat container
+                if (chatContainer) {
+                    chatContainer.classList.remove('keyboard-open');
+                }
+            }
+        }
+
+        function closeKeyboard() {
+            toggleInputLanguage('en');
+        }
+
+        // Sync keyboard with manual input
+        document.addEventListener('DOMContentLoaded', function() {
+            const chatInput = document.getElementById('chatInput');
+            if (chatInput) {
+                chatInput.addEventListener('input', function(e) {
+                    if (virtualKeyboard && inputLanguage === 'hi') {
+                        virtualKeyboard.setInput(e.target.value);
+                    }
+                });
+            }
+        });
 
         function setSubject(subject, btn) {
             activeSubject = subject;
@@ -317,16 +832,22 @@
 
         function loadChaptersFromMap() {
             const chapterDropdown = document.getElementById('chapterDropdown');
-            chapterDropdown.innerHTML = '<option value="">Select Chapter</option>';
+            const placeholderText = activeLanguage === 'hi' ? uiTranslations.hi.ui.selectChapter : 'Select Chapter';
+            chapterDropdown.innerHTML = `<option value="">${placeholderText}</option>`;
             if (!activeClass || !activeSubject || !activeLanguage) return;
             const data = chapterMap[activeClass]?.[activeLanguage]?.[activeSubject];
             if (!data) {
-                chapterDropdown.innerHTML = '<option value="">No chapters available</option>';
+                const noChaptersText = activeLanguage === 'hi' ? 'कोई अध्याय उपलब्ध नहीं' : 'No chapters available';
+                chapterDropdown.innerHTML = `<option value="">${noChaptersText}</option>`;
                 return;
             }
             Object.entries(data).forEach(([topic, chapters]) => {
                 const optGroup = document.createElement('optgroup');
-                optGroup.label = topic;
+                // Translate topic label if in Hindi
+                const topicLabel = activeLanguage === 'hi' && uiTranslations.hi.topics[topic]
+                    ? uiTranslations.hi.topics[topic]
+                    : topic;
+                optGroup.label = topicLabel;
                 chapters.forEach(ch => {
                     const opt = document.createElement('option');
                     opt.value = ch;
@@ -340,8 +861,22 @@
         async function startChat() {
             const btn = document.getElementById('startChatBtn');
             const selectedChapter = document.getElementById('chapterDropdown').value;
+            const errorDiv = document.getElementById('startChatError');
+            const errorText = document.getElementById('startChatErrorText');
+
+            // Hide error initially
+            errorDiv.classList.add('hidden');
+
             if (!activeSubject || !activeClass || !selectedChapter) {
-                alert("Please select subject, class, and chapter");
+                // Show inline error message
+                errorText.innerText = activeLanguage === 'hi' ? uiTranslations.hi.ui.selectSubjectClassChapter : "Please select subject, class, and chapter";
+                errorDiv.classList.remove('hidden');
+
+                // Auto-hide after 5 seconds
+                setTimeout(() => {
+                    errorDiv.classList.add('hidden');
+                }, 5000);
+
                 return;
             }
             
@@ -354,7 +889,9 @@
                activeSubject='Science';                
             }
 
-            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> LOADING...';
+            btn.innerHTML = activeLanguage === 'hi'
+                ? '<i class="fa-solid fa-circle-notch fa-spin"></i> ' + uiTranslations.hi.ui.loading
+                : '<i class="fa-solid fa-circle-notch fa-spin"></i> LOADING...';
             btn.disabled = true;
             try {
                 const languageMap = { 'en': 'English', 'hi': 'Hindi' };
@@ -388,13 +925,20 @@
                     document.getElementById('chatInterface').style.display = 'flex';
 
                     // Show context badge with info
-                    document.getElementById('contextBadge').classList.remove('hidden');
-                    document.getElementById('contextInfo').innerText = `${activeSubject} - Class ${activeClass} - ${selectedChapter}`;
+                    const contextBadge = document.getElementById('contextBadge');
+                    contextBadge.classList.remove('hidden');
+                    contextBadge.style.display = 'flex';
+                    const subjectDisplay = activeLanguage === 'hi' && uiTranslations.hi.subjects[activeSubject]
+                        ? uiTranslations.hi.subjects[activeSubject]
+                        : activeSubject;
+                    const classText = activeLanguage === 'hi' ? 'कक्षा' : 'Class';
+                    document.getElementById('contextInfo').innerText = `${subjectDisplay} - ${classText} ${activeClass} - ${selectedChapter}`;
 
                     // Show filename and page numbers in badge
                     const filename = doc.filename || 'Unknown';
                     const pageNumbers = doc.page_numbers || 'N/A';
-                    document.getElementById('contextMeta').innerText = `📄 ${filename} | Pages: ${pageNumbers}`;
+                    const pagesText = activeLanguage === 'hi' ? 'पृष्ठ' : 'Pages';
+                    document.getElementById('contextMeta').innerText = `📄 ${filename} | ${pagesText}: ${pageNumbers}`;
 
                     // Populate modal with context details
                     document.getElementById('modalFilename').innerText = filename;
@@ -446,7 +990,10 @@
 
                     messageHistory = [];
                     document.getElementById('chatMessages').innerHTML = '';
-                    addMessage('assistant', `Hello! I have loaded content about "${selectedChapter}" from ${activeSubject}, Class ${activeClass}. Feel free to ask me any questions about this topic!`);
+
+                    // Always show welcome message in English (chat messages should be in English)
+                    const welcomeMsg = `Hello! I have loaded content about "${selectedChapter}" from ${subjectDisplay}, Class ${activeClass}. Feel free to ask me any questions about this topic!`;
+                    addMessage('assistant', welcomeMsg);
                 } else {
                     throw new Error('No context documents found in the response');
                 }
@@ -454,23 +1001,40 @@
                 console.error('Error:', e);
                 alert(e.message || "Failed to initialize chat");
             } finally {
-                btn.innerHTML = 'START CHAT';
+                btn.innerHTML = activeLanguage === 'hi' ? uiTranslations.hi.ui.startChat : 'START CHAT';
                 btn.disabled = false;
             }
         }
 
         function resetChat() {
-            if (confirm('Are you sure you want to reset the chat?')) {
-                document.getElementById('welcomeState').style.display = 'flex';
-                document.getElementById('chatInterface').classList.add('hidden');
-                document.getElementById('chatInterface').style.display = 'none';
-                document.getElementById('chatInputContainer').classList.add('hidden');
-                document.getElementById('viewContextBtn').classList.add('hidden');
-                messageHistory = [];
-                systemContext = "";
-                contextLoaded = false;
-                contextData = null;
-            }
+            // Update modal text based on language
+            const title = activeLanguage === 'hi' ? 'चैट रीसेट करें?' : 'Reset Chat?';
+            const message = activeLanguage === 'hi' ? uiTranslations.hi.ui.resetConfirm : 'Are you sure you want to reset the chat?';
+            const cancelText = activeLanguage === 'hi' ? uiTranslations.hi.ui.cancel : 'Cancel';
+            const resetText = activeLanguage === 'hi' ? uiTranslations.hi.ui.reset : 'Reset';
+
+            document.getElementById('resetModalTitle').innerText = title;
+            document.getElementById('resetModalMessage').innerText = message;
+            document.getElementById('resetCancelBtn').innerText = cancelText;
+            document.getElementById('resetConfirmBtn').innerText = resetText;
+
+            // Show the modal
+            toggleResetChatModal();
+        }
+
+        function performResetChat() {
+            document.getElementById('welcomeState').style.display = 'flex';
+            document.getElementById('chatInterface').classList.add('hidden');
+            document.getElementById('chatInterface').style.display = 'none';
+            document.getElementById('chatInputContainer').classList.add('hidden');
+            document.getElementById('viewContextBtn').classList.add('hidden');
+            const contextBadge = document.getElementById('contextBadge');
+            contextBadge.classList.add('hidden');
+            contextBadge.style.display = 'none';
+            messageHistory = [];
+            systemContext = "";
+            contextLoaded = false;
+            contextData = null;
         }
 
         function addMessage(role, content, isHtml = false) {
@@ -531,6 +1095,7 @@
             showTypingIndicator();
 
             try {
+                console.log(JSON.stringify({ model: selectedModel, messages: messageHistory, system_context: systemContext }));
                 const response = await fetch('/api/chat-completions', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -552,6 +1117,7 @@
             } catch (e) {
                 console.error(e);
                 hideTypingIndicator();
+                // Always show error message in English (chat messages should be in English)
                 addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
             } finally {
                 input.disabled = false;
@@ -629,9 +1195,16 @@
                 document.getElementById('chatInterface').style.display = 'flex';
 
                 // Show context badge
-                document.getElementById('contextBadge').classList.remove('hidden');
-                document.getElementById('contextInfo').innerText = `${params.subject} - Class ${params.class} - ${params.chapter}`;
-                document.getElementById('contextMeta').innerText = `📄 From Form Submission`;
+                const contextBadge = document.getElementById('contextBadge');
+                contextBadge.classList.remove('hidden');
+                contextBadge.style.display = 'flex';
+                const subjectDisplay = activeLanguage === 'hi' && uiTranslations.hi.subjects[params.subject]
+                    ? uiTranslations.hi.subjects[params.subject]
+                    : params.subject;
+                const classText = activeLanguage === 'hi' ? 'कक्षा' : 'Class';
+                document.getElementById('contextInfo').innerText = `${subjectDisplay} - ${classText} ${params.class} - ${params.chapter}`;
+                const formSubmissionText = activeLanguage === 'hi' ? uiTranslations.hi.ui.fromFormSubmission : 'From Form Submission';
+                document.getElementById('contextMeta').innerText = `📄 ${formSubmissionText}`;
 
                 // Populate modal
                 document.getElementById('modalFilename').innerText = 'From Form Submission';
@@ -656,7 +1229,13 @@
                 // Initialize message history
                 messageHistory = [];
                 document.getElementById('chatMessages').innerHTML = '';
-                addMessage('assistant', `Hello! I have loaded content about "${params.chapter}" from ${params.subject}, Class ${params.class}. Feel free to ask me any questions about this topic!`);
+
+                // Always show welcome message in English (chat messages should be in English)
+                const welcomeMsg = `Hello! I have loaded content about "${params.chapter}" from ${subjectDisplay}, Class ${params.class}. Feel free to ask me any questions about this topic!`;
+                addMessage('assistant', welcomeMsg);
+
+                // Update all UI text after auto-population
+                updateAllUIText();
 
             } catch (e) {
                 console.error('Error auto-populating from URL:', e);
