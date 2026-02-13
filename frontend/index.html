@@ -269,23 +269,40 @@
         /* logo*/
         /* Base logo styling */
         .logo-img {
-            height: 32px;
+            display: block;
             width: auto;
+            object-fit: contain;
             transition: filter 0.3s ease, opacity 0.3s ease;
+        }
+
+        /* Different sizes */
+        .logo-lg {
+            height: 48px;
+        }
+
+        .logo-sm {
+            height: 32px;
+        }
+
+        /* Desktop scaling */
+        @media (min-width: 768px) {
+            .logo-lg { height: 56px; }
+            .logo-sm { height: 40px; }
         }
 
         /* Light mode */
         [data-theme="light"] .logo-img {
             filter: none;
-            opacity: 0.9;
+            opacity: 0.95;
         }
 
-        /* Dark mode – invert ALL logos */
-        [data-theme="dark"] img[alt="BharatGen"],
-        [data-theme="dark"] img[alt="IBM"],
-        [data-theme="dark"] img[alt="NextGen"] {
+        /* Dark mode */
+        [data-theme="dark"] .logo-img {
             filter: invert(1) brightness(1.15) contrast(1.1);
         }
+
+ 
+
     </style>
 </head>
 <script>
@@ -306,19 +323,23 @@
     title="Start Chat">
     <i class="fa-solid fa-comments text-sm"></i>
 </button>
-<body class="min-h-screen p-4 md:p-10 flex flex-col" script="">
+<body class="min-h-screen p-4 md:p-10 flex flex-col" >
 
-    <header class="max-w-6xl mx-auto w-full flex justify-between items-center mb-8">
+    <header class="max-w-6xl mx-auto w-full flex flex-col md:flex-row items-center justify-between gap-4 mb-8">
 
-        <!-- Left: Logos -->
-        <div class="flex items-center gap-5">
-            <img src="/static/logo/BharatGen.svg" alt="BharatGen" class="h-14 logo-img">
-            <img src="/static/logo/IBM.svg" alt="IBM" class="h-7 logo-img">
-            <img src="/static/logo/nxtgen.svg" alt="NextGen" class="h-7 logo-img">
+
+        <!-- Left: Logos - FIXED FOR MOBILE -->
+        <div class="flex items-center gap-5 flex-wrap justify-center md:justify-start">
+
+                <img src="/static/logo/BharatGen.svg" class="logo-img logo-lg">
+                <img src="/static/logo/IBM.svg" class="logo-img logo-sm">
+                <img src="/static/logo/nxtgen.svg" class="logo-img logo-sm">
+
+
         </div>
 
         <!-- Right: Active Engine + Controls (UNCHANGED LOGIC) -->
-        <div class="flex items-center gap-4">
+        <div class="flex items-center gap-2 sm:gap-4">
 
             <!-- Active Engine (OLD ONE – kept as-is) -->
             <div class="hidden md:flex flex-col items-end">
