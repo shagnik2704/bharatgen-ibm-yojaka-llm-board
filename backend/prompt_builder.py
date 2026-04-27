@@ -1,9 +1,9 @@
 from typing import Any
 
 try:
-    from .prompt import GUARDRAILS_PROMPT
+    from .guardrails import GUARDRAILS_PROMPT
 except ImportError:
-    from prompt import GUARDRAILS_PROMPT
+    from guardrails import GUARDRAILS_PROMPT
 
 
 def build_prompt_from_request(req: Any, chunk_text: str) -> str:
