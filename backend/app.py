@@ -8,7 +8,7 @@ if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
 import uvicorn
-from main import app
+from main_minimal import app
 
 if __name__ == "__main__":
     try:
