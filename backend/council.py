@@ -22,7 +22,8 @@ except ImportError:
 def build_member_generate_one_prompt(subject: str, chapter: str, theme: str, qType: str,
                                       depth: str, language: str,
                                       topic_chunk: str = None,
-                                      theme_chunk: str = None) -> str:
+                                      theme_chunk: str = None,
+                                      use_citation: bool = False) -> str:
     """Build the prompt for a board member to generate exactly one question (used in Param-orchestrator flow)."""
     lang = (language or "en").lower()
     if lang == "hi":
@@ -40,6 +41,14 @@ def build_member_generate_one_prompt(subject: str, chapter: str, theme: str, qTy
         rag_block = (
             "\n\n### SOURCE MATERIAL (RAG CONTEXT)\n"
             f"{topic_chunk}\n\n"
+        )
+    citation_instructions = ""
+    if use_citation:
+        citation_instructions = (
+            "### CITATION-BASED MODE (ENFORCE)\n"
+            "If citation-based mode is active: select exactly one verbatim quote from the SOURCE MATERIAL that directly supports the correct answer. "
+            "In the <Answer> block, first provide the correct answer, then include a single citation line prefixed with 'Citation: ' containing the verbatim quote. "
+            "Remove any parenthetical citation markers (e.g., '(p. 175)'). Do not include multiple quotes or metadata.\n\n"
         )
     return (
         "### ROLE\n"
@@ -59,6 +68,7 @@ def build_member_generate_one_prompt(subject: str, chapter: str, theme: str, qTy
         f"- QUANTITY: 1 (generate exactly one question)\n"
         f"{rag_block}"
         f"{lang_block}"
+        f"{citation_instructions}"
         "### CONSTRAINTS\n"
         "1. Content must be strictly based on NCERT syllabus standards.\n"
         "2. Distractors for MCQs must be 'Common Misconceptions'.\n"
@@ -74,7 +84,8 @@ def build_member_generate_one_prompt(subject: str, chapter: str, theme: str, qTy
 def build_chairman_proposal_prompt(subject: str, chapter: str, theme: str, qType: str, 
                                    depth: str, num_questions: int, language: str,
                                    topic_chunk: str = None, 
-                                   theme_chunk: str = None) -> str:
+                                   theme_chunk: str = None,
+                                   use_citation: bool = False) -> str:
     """Build the prompt for the chairman's initial proposal."""
     lang = (language or "en").lower()
     question_count = get_generation_question_count(depth, num_questions)
@@ -97,6 +108,14 @@ def build_chairman_proposal_prompt(subject: str, chapter: str, theme: str, qType
             "\n\n### SOURCE MATERIAL (RAG CONTEXT)\n"
             f"{topic_chunk}\n\n"
         )
+    citation_instructions = ""
+    if use_citation:
+        citation_instructions = (
+            "### CITATION-BASED MODE (ENFORCE)\n"
+            "When citation-based mode is active: select exactly one verbatim quote from the SOURCE MATERIAL that directly supports the answer. "
+            "In the output, include the quote in the Answer block prefixed with 'Citation: ' after the correct answer. "
+            "Strip parenthetical citation markers like '(p. 175)'. Do not include multiple quotes or extra metadata.\n\n"
+        )
     
     if is_bloom_level_2(depth):
         prompt = (
@@ -118,6 +137,7 @@ def build_chairman_proposal_prompt(subject: str, chapter: str, theme: str, qType
         f"- TARGET DEPTH: {depth}\n"
         f"- QUANTITY: {question_count}\n"
         f"{rag_context}"
+        f"{citation_instructions}"
         "### CONSTRAINTS\n"
         "1. Content must be strictly based on NCERT syllabus standards.\n"
         "2. Questions must demonstrate Bloom level 2 understanding or application, not simple recall.\n"
@@ -164,6 +184,7 @@ def build_chairman_proposal_prompt(subject: str, chapter: str, theme: str, qType
         f"- TARGET DEPTH: {depth}\n"
         f"- QUANTITY: {question_count}\n"
         f"{rag_context}"
+        f"{citation_instructions}"
         
         "### CONSTRAINTS\n"
         "1. Content must be strictly based on NCERT syllabus standards.\n"
@@ -183,7 +204,8 @@ def build_chairman_proposal_prompt(subject: str, chapter: str, theme: str, qType
 def build_member_review_prompt(subject: str, chapter: str, theme: str, qType: str, 
                                 depth: str, language: str,
                                 chairman_proposal: str, member_letter: str,
-                                topic_chunk: str = None, theme_chunk: str = None) -> str:
+                                topic_chunk: str = None, theme_chunk: str = None,
+                                use_citation: bool = False) -> str:
     """Build the prompt for a board member to review the chairman's proposal."""
     lang = (language or "en").lower()
     if lang == "hi":
@@ -205,6 +227,11 @@ def build_member_review_prompt(subject: str, chapter: str, theme: str, qType: st
             "\n\n### SOURCE MATERIAL (RAG CONTEXT)\n"
             f"{topic_chunk}\n\n"
         )
+    citation_instructions = ""
+    if use_citation:
+        citation_instructions = (
+            "\nNOTE: This review is for a citation-based proposal. Quotes in the Chairman's proposal are verbatim excerpts from the source; check that they support the answer and that parenthetical citation markers have been stripped.\n"
+        )
     
     prompt = (
         f"{lang_block}"
@@ -219,6 +246,7 @@ def build_member_review_prompt(subject: str, chapter: str, theme: str, qType: st
         f"- QUESTION TYPE: {qType}\n"
         f"- TARGET DEPTH: {depth}\n"
         f"{rag_context}"
+        f"{citation_instructions}"
         
         "### CHAIRMAN'S PROPOSAL\n"
         "The Chairman has proposed the following question(s):\n"
@@ -247,7 +275,8 @@ def build_member_review_prompt(subject: str, chapter: str, theme: str, qType: st
 def build_chairman_synthesis_prompt(subject: str, chapter: str, theme: str, qType: str,
                                      depth: str, language: str,
                                      original_proposal: str, member_reviews: List[Dict],
-                                     topic_chunk: str = None, theme_chunk: str = None) -> str:
+                                     topic_chunk: str = None, theme_chunk: str = None,
+                                     use_citation: bool = False) -> str:
     """Build the prompt for the chairman to synthesize final questions based on member feedback."""
     lang = (language or "en").lower()
     question_count = get_generation_question_count(depth, 2)
@@ -269,6 +298,12 @@ def build_chairman_synthesis_prompt(subject: str, chapter: str, theme: str, qTyp
         rag_context = (
             "\n\n### SOURCE MATERIAL (RAG CONTEXT)\n"
             f"{topic_chunk}\n\n"
+        )
+    citation_instructions = ""
+    if use_citation:
+        citation_instructions = (
+            "### CITATION-BASED MODE (ENFORCE)\n"
+            "When finalising synthesis for citation-based proposals, ensure the Answer includes the correct answer followed by exactly one verbatim quote from the SOURCE MATERIAL prefixed with 'Citation: '. Strip parenthetical citation markers.\n\n"
         )
     
     reviews_text = ""
@@ -294,6 +329,7 @@ def build_chairman_synthesis_prompt(subject: str, chapter: str, theme: str, qTyp
         f"- QUESTION TYPE: {qType}\n"
         f"- TARGET DEPTH: {depth}\n"
         f"{rag_context}"
+        f"{citation_instructions}"
         "### YOUR ORIGINAL PROPOSAL\n"
         f"{original_proposal}\n\n"
         "### BOARD MEMBER REVIEWS\n"
@@ -335,6 +371,7 @@ def build_chairman_synthesis_prompt(subject: str, chapter: str, theme: str, qTyp
         f"- QUESTION TYPE: {qType}\n"
         f"- TARGET DEPTH: {depth}\n"
         f"{rag_context}"
+        f"{citation_instructions}"
         
         "### YOUR ORIGINAL PROPOSAL\n"
         f"{original_proposal}\n\n"
@@ -391,6 +428,7 @@ async def run_council_flow(chairman_model_id: str, member_model_ids: List[str],
                           subject: str, chapter: str, theme: str, qType: str,
                           depth: str, num_questions: int,
                           use_rag: bool = False,
+                          use_citation: bool = False,
                           enable_dynamic_dropoff: bool = True,
                           enable_graph_expansion: bool = False,
                           temperature: float = 0.7) -> Dict:
@@ -417,7 +455,26 @@ async def run_council_flow(chairman_model_id: str, member_model_ids: List[str],
     theme_meta = []
     source_meta = None
     
-    if use_rag:
+    if use_citation:
+        # Citation-based retrieval path: pick one verbatim citation per topic/theme
+        rag_store_dir = Path(os.getenv("RAG_STORE_DIR", str(Path(__file__).parent.parent / "rag_store_books"))).resolve()
+        try:
+            retriever = MinimalRAGRetriever(rag_store_dir)
+            topic_chunk, theme_chunk, topic_meta, theme_meta = retriever.retrieve_dual_citation(
+                topic_query=chapter,
+                theme_query=theme,
+                subject=subject,
+                chapter=chapter,
+                block=None,
+                language=language,
+            )
+            if topic_meta and len(topic_meta) > 0:
+                source_meta = topic_meta[0]
+            elif theme_meta and len(theme_meta) > 0:
+                source_meta = theme_meta[0]
+        except Exception as e:
+            print(f"[Council] Citation retrieval failed: {e}. Proceeding without RAG context.")
+    elif use_rag:
         # Fetch RAG context using unified retriever
         rag_store_dir = Path(os.getenv("RAG_STORE_DIR", str(Path(__file__).parent.parent / "rag_store_books"))).resolve()
         try:
@@ -446,7 +503,8 @@ async def run_council_flow(chairman_model_id: str, member_model_ids: List[str],
     
     # Stage 1: Chairman proposal
     chairman_prompt = build_chairman_proposal_prompt(
-        subject, chapter, theme, qType, depth, num_questions, language, topic_chunk, theme_chunk
+        subject, chapter, theme, qType, depth, num_questions, language, topic_chunk, theme_chunk,
+        use_citation=use_citation
     )
     
     chairman_output = await run_model(chairman_model_id, chairman_prompt, req=None, temperature=temperature)
@@ -457,7 +515,8 @@ async def run_council_flow(chairman_model_id: str, member_model_ids: List[str],
         member_letter = chr(65 + i)  # A, B, C, etc.
         member_prompt = build_member_review_prompt(
             subject, chapter, theme, qType, depth, language, chairman_output, member_letter,
-            topic_chunk, theme_chunk
+            topic_chunk, theme_chunk,
+            use_citation=use_citation
         )
         member_tasks.append(run_model(member_id, member_prompt, req=None, temperature=temperature))
     
@@ -473,7 +532,8 @@ async def run_council_flow(chairman_model_id: str, member_model_ids: List[str],
     # Stage 3: Chairman synthesis
     synthesis_prompt = build_chairman_synthesis_prompt(
         subject, chapter, theme, qType, depth, language, chairman_output, member_opinions,
-        topic_chunk, theme_chunk
+        topic_chunk, theme_chunk,
+        use_citation=use_citation
     )
     
     final_output = await run_model(chairman_model_id, synthesis_prompt, req=None, temperature=temperature)

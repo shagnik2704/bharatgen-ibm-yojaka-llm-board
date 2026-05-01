@@ -81,6 +81,7 @@ class QueryRequest(BaseModel):
     num_questions: int = Field(default=1, ge=1, le=5)
     block: Optional[str] = None
     use_rag: bool = True
+    use_citation: bool = False
     board: Optional[BoardConfig] = None
     enable_alignment: bool = True
     enable_dynamic_dropoff: bool = True
@@ -307,6 +308,7 @@ class QuestionStore:
                     type_match INTEGER,
                     type_match_reason TEXT,
                     is_rag INTEGER DEFAULT 0
+                        , use_citation INTEGER DEFAULT 0
                 )
                 """
             )
@@ -325,6 +327,7 @@ class QuestionStore:
             "type_match": "INTEGER",
             "type_match_reason": "TEXT",
             "is_rag": "INTEGER DEFAULT 0",
+            "use_citation": "INTEGER DEFAULT 0",
         }
         for column_name, column_type in required.items():
             if column_name not in existing:
@@ -360,7 +363,7 @@ class QuestionStore:
                             id, created_at, model_id, subject, chapter, standard, theme, qtype, depth, language,
                             request_json, question, answer, chunk_text, chunk_source, similarity,
                             alignment_score, scores_json, source_text_json, source_meta_json, board_metadata_json, rubric_json,
-                            type_match, type_match_reason, is_rag
+                            type_match, type_match_reason, is_rag, use_citation
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
@@ -389,6 +392,7 @@ class QuestionStore:
                             (1 if type_match else 0) if type_match is not None else None,
                             type_match_reason,
                             1 if qa.get("is_rag") else 0,
+                            1 if getattr(req, "use_citation", False) else 0,
                         ),
                     )
                 conn.commit()
@@ -401,7 +405,7 @@ class QuestionStore:
             rows = conn.execute(
                 """
                   SELECT id, created_at, model_id, subject, chapter, qtype, question, similarity, alignment_score,
-                      type_match, type_match_reason, is_rag
+                      type_match, type_match_reason, is_rag, use_citation
                 FROM generated_questions
                 ORDER BY created_at DESC
                 LIMIT ? OFFSET ?
@@ -554,6 +558,7 @@ async def _score_and_enrich_questions(
         item["source_meta"] = source_meta
         item["generation_settings"] = {
             "use_rag": bool(req.use_rag),
+            "use_citation": bool(getattr(req, "use_citation", False)),
             "enable_alignment": bool(req.enable_alignment),
             "enable_dynamic_dropoff": bool(req.enable_dynamic_dropoff),
             "enable_graph_expansion": bool(req.enable_graph_expansion),
@@ -630,6 +635,7 @@ async def ask(req: QueryRequest) -> List[Dict[str, Any]]:
             depth=req.depth,
             num_questions=get_generation_question_count(req.depth, req.num_questions),
             use_rag=req.use_rag,
+            use_citation=req.use_citation,
             enable_dynamic_dropoff=req.enable_dynamic_dropoff,
             enable_graph_expansion=req.enable_graph_expansion,
             temperature=req.temperature,
@@ -664,7 +670,7 @@ async def ask(req: QueryRequest) -> List[Dict[str, Any]]:
             first_meta=source_meta,
             board_metadata=board_metadata,
             source_text=source_chunks,
-            is_rag=bool(req.use_rag),
+            is_rag=bool(req.use_rag or req.use_citation),
             generated_count=generated_count,
             requested_count=get_generation_question_count(req.depth, req.num_questions),
             generation_time_ms=round((time.time() - start_time) * 1000, 2),
@@ -680,7 +686,26 @@ async def ask(req: QueryRequest) -> List[Dict[str, Any]]:
     chunk_text = ""
     metas: List[Dict[str, Any]] = []
 
-    if req.use_rag:
+    # Citation mode takes precedence over generic RAG retrieval when enabled
+    if req.use_citation:
+        # Citation-based retrieval: pick a random citation verbatim from the selected block
+        chunk_text, metas = retriever.retrieve_citation(
+            query=retrieval_query,
+            subject=req.subject,
+            chapter=req.chapter,
+            standard=req.standard,
+            block=req.block,
+            language=req.language,
+        )
+        if not chunk_text:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    "No citation entries found in the selected Block. Ensure the Block contains a citations.json file with usable quotes."
+                ),
+            )
+    elif req.use_rag:
+        # Standard semantic RAG retrieval
         chunk_text, metas = retriever.retrieve(
             query=retrieval_query,
             subject=req.subject,
@@ -691,7 +716,6 @@ async def ask(req: QueryRequest) -> List[Dict[str, Any]]:
             enable_dynamic_dropoff=req.enable_dynamic_dropoff,
             enable_graph_expansion=req.enable_graph_expansion,
         )
-
         if not chunk_text:
             raise HTTPException(
                 status_code=404,
@@ -712,7 +736,7 @@ async def ask(req: QueryRequest) -> List[Dict[str, Any]]:
     questions = questions[: requested_count]
     generated_count = len(questions)
     first_meta = metas[0] if metas else None
-    source_text = {"topic_chunk": chunk_text, "theme_chunk": ""} if req.use_rag else {"topic_chunk": "", "theme_chunk": ""}
+    source_text = {"topic_chunk": chunk_text, "theme_chunk": ""} if (req.use_rag or req.use_citation) else {"topic_chunk": "", "theme_chunk": ""}
 
     enriched = await _score_and_enrich_questions(
         req=req,
@@ -720,13 +744,13 @@ async def ask(req: QueryRequest) -> List[Dict[str, Any]]:
         retrieval_query=retrieval_query,
         first_meta=first_meta,
         source_text=source_text,
-        is_rag=bool(req.use_rag),
+        is_rag=bool(req.use_rag or req.use_citation),
         generated_count=generated_count,
         requested_count=requested_count,
         generation_time_ms=round((time.time() - start_time) * 1000, 2),
     )
 
-    saved_ids = store.save_batch(req, enriched, chunk_text=chunk_text if req.use_rag else "", chunk_meta=first_meta)
+    saved_ids = store.save_batch(req, enriched, chunk_text=chunk_text if (req.use_rag or req.use_citation) else "", chunk_meta=first_meta)
     for i, row_id in enumerate(saved_ids):
         if i < len(enriched):
             enriched[i]["id"] = row_id

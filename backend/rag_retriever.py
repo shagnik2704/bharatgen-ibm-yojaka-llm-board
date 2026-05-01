@@ -439,6 +439,11 @@ class MinimalRAGRetriever:
                 wc = self._word_count(text)
                 if wc <= MIN_CHUNK_WORDS or wc >= MAX_CHUNK_WORDS:
                     continue
+                
+                if isinstance(chunk, dict):
+                    title = chunk.get("page", "")
+                    if "glossary" in title:
+                        continue
 
                 meta = {
                     "doc_id": record["doc_id"],
@@ -483,6 +488,121 @@ class MinimalRAGRetriever:
             metas.append(item_meta)
 
         return "\n\n".join(texts), metas
+
+    def _load_citations_from_doc(self, doc_dir: Path) -> List[Dict[str, Any]]:
+        citations_path = doc_dir / "citations.json"
+        if not citations_path.exists():
+            return []
+        try:
+            with open(citations_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            # Expecting a list of citation entries. Support several common shapes.
+            if isinstance(data, list):
+                return data
+            if isinstance(data, dict):
+                # Common top-level keys
+                for key in ("citations", "items", "quotes"):
+                    if isinstance(data.get(key), list):
+                        return data.get(key)
+                # If the dict itself maps ids to objects, return values
+                values = [v for v in data.values() if isinstance(v, (dict, str))]
+                if values:
+                    return values
+            return []
+        except Exception:
+            return []
+
+    def _strip_citation_parentheticals(self, text: str) -> str:
+        # Remove parenthetical citation markers that likely indicate pages/authors.
+        if not text:
+            return text
+        # Remove parentheses that contain page markers, digits, 'p.', 'pp.', 'page', or typical citation tokens
+        pattern = re.compile(r"\s*\((?:[^)]*\b(?:p\.?|pp\.?|page|pg|Prologue|Chapter|Canto|Book)\b[^)]*)\)", flags=re.IGNORECASE)
+        cleaned = re.sub(pattern, "", text)
+        # Also remove isolated parentheticals that are just numbers like (20)
+        cleaned = re.sub(r"\s*\(\s*\d{1,4}\s*\)", "", cleaned)
+        return cleaned.strip()
+
+    def _extract_page_from_text(self, text: str) -> Optional[str]:
+        if not text:
+            return None
+        # Look for parenthetical groups that mention page, p., pp., Canto, Book, Prologue, etc.
+        m = re.search(r"\(([^)]*(?:\b(?:p\.?|pp\.?|page|pg|canto|book|prologue)\b)[^)]*)\)", text, flags=re.IGNORECASE)
+        if m:
+            return m.group(1).strip()
+        # Fallback: find 'p' followed by digits
+        m2 = re.search(r"\b[pP]\.\s*(\d{1,4})\b", text)
+        if m2:
+            return m2.group(1)
+        return None
+
+    def retrieve_citation(
+        self,
+        query: str,
+        subject: Optional[str] = None,
+        chapter: Optional[str] = None,
+        standard: Optional[str] = None,
+        block: Optional[str] = None,
+        language: Optional[str] = None,
+    ) -> Tuple[str, List[Dict[str, Any]]]:
+        """
+        Retrieve a single random citation entry from candidate documents in the given filters.
+        Returns (citation_text, [meta]) or ("", []) if none found.
+        """
+        candidates = self._candidate_records(query, subject, chapter, standard, block, language)
+        all_citations = []
+        for record in candidates:
+            doc_dir: Path = record["doc_dir"]
+            citations = self._load_citations_from_doc(doc_dir)
+            for c in citations:
+                all_citations.append((record, doc_dir, c))
+
+        if not all_citations:
+            return "", []
+
+        import random
+
+        rec, doc_dir, citation = random.choice(all_citations)
+
+        # citation may be a string or dict; support 'citation_text' key used in samples
+        if isinstance(citation, dict):
+            text = citation.get("citation_text") or citation.get("text") or citation.get("quote") or citation.get("citation") or ""
+        else:
+            text = str(citation)
+
+        text = str(text or "").strip()
+        # Try to extract page/locator info from the raw text before stripping
+        page_info = self._extract_page_from_text(text)
+        cleaned = self._strip_citation_parentheticals(text)
+
+        meta = {
+            "doc_id": rec.get("doc_id"),
+            "file_name": rec.get("meta", {}).get("file_name"),
+            "source_path": rec.get("meta", {}).get("store_path"),
+            "title": None,
+            "page": page_info,
+            "chunk_id": None,
+            "similarity": None,
+            "word_count": len(cleaned.split()),
+            "citation_original": text,
+        }
+
+        return cleaned, [meta]
+
+    def retrieve_dual_citation(
+        self,
+        topic_query: str,
+        theme_query: Optional[str] = None,
+        subject: Optional[str] = None,
+        chapter: Optional[str] = None,
+        standard: Optional[str] = None,
+        block: Optional[str] = None,
+        language: Optional[str] = None,
+    ) -> Tuple[str, str, List[Dict[str, Any]], List[Dict[str, Any]]]:
+        theme_query = theme_query or topic_query
+        topic_text, topic_meta = self.retrieve_citation(topic_query, subject, chapter, standard, block, language)
+        theme_text, theme_meta = self.retrieve_citation(theme_query, subject, chapter, standard, block, language)
+        return topic_text, theme_text, topic_meta, theme_meta
 
     def retrieve_dual(
         self,

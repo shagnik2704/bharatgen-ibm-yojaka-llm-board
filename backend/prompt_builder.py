@@ -34,6 +34,17 @@ def build_prompt_from_request(req: Any, chunk_text: str) -> str:
             f"{chunk_text}\n\n"
         )
 
+    use_citation = bool(getattr(req, "use_citation", False))
+    citation_instructions = ""
+    if use_citation:
+        citation_instructions = (
+            "### CITATION-BASED MODE (ENFORCE)\n"
+            "If citation-based mode is active: you MUST select exactly one verbatim quote from the SOURCE MATERIAL that directly supports the correct answer. "
+            "In the `answer` field, first provide the correct answer, then on a new line include a single citation block prefixed with 'Citation: ' followed by the verbatim quote. "
+            "Remove any parenthetical citation markers from the quoted text (e.g., remove '(p. 175)' or '(Rajan, 29)'). "
+            "Do NOT include multiple quotes or additional citation metadata. Ensure the quoted text is directly supporting the answer.\n\n"
+        )
+
     if is_bloom_level_2(depth):
         prompt = (
             "### ROLE\n"
@@ -66,6 +77,7 @@ def build_prompt_from_request(req: Any, chunk_text: str) -> str:
             "3. Use LaTeX for all technical notation (e.g., $H_2O$, $\\sin(\\theta)$).\n"
             "4. Generate exactly 2 questions, each with a teacher-facing rubric worth 10 marks in total.\n"
             "5. Keep the output strictly valid JSON only. Do not wrap it in markdown fences or add commentary.\n\n"
+            f"{citation_instructions}"
 
             "### RUBRIC REQUIREMENTS\n"
             "- Each item must include question, answer, and rubric fields.\n"
@@ -119,6 +131,7 @@ def build_prompt_from_request(req: Any, chunk_text: str) -> str:
             "2. THE DEPTH IS PARAMOUNT: If the depth is DOK 3, do not provide a DOK 1 recall question even if the text is short.\n"
             f"{task_keywords_instruction}"
             "3. Use LaTeX for all technical notation (e.g., $H_2O$, $\\sin(\\theta)$).\n\n"
+            f"{citation_instructions}"
 
             "### CONSTRAINTS\n"
             "1. Content must be strictly based on NCERT syllabus standards.\n"

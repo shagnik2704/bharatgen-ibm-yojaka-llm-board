@@ -515,6 +515,24 @@
                 <div class="flex items-center justify-between gap-4 rounded-2xl p-4"
                     style="background: var(--bg-secondary); border: 1px solid var(--card-border);">
                     <div>
+                        <div class="text-sm font-semibold" style="color: var(--text-primary);">Citation-based</div>
+                        <div class="text-[10px] mt-1" style="color: var(--text-secondary);">
+                            Use a verbatim quote from the selected Block as the source for answers.
+                        </div>
+                    </div>
+                    <button id="citationToggleBtn" type="button" role="switch" aria-checked="false"
+                        class="relative inline-flex items-center w-11 h-6 rounded-full transition-all"
+                        style="background: var(--btn-secondary-bg);"
+                        onclick="toggleCitationSetting(event)">
+                        <span id="citationToggleThumb"
+                            class="absolute top-[2px] left-[2px] h-5 w-5 rounded-full border transition-all"
+                            style="background: #ffffff; border-color: rgba(15, 23, 42, 0.15);"></span>
+                    </button>
+                </div>
+
+                <div class="flex items-center justify-between gap-4 rounded-2xl p-4"
+                    style="background: var(--bg-secondary); border: 1px solid var(--card-border);">
+                    <div>
                         <div class="text-sm font-semibold" style="color: var(--text-primary);">Task Keywords</div>
                         <div class="text-[10px] mt-1" style="color: var(--text-secondary);">
                             Include directive keywords like discuss, examine, and differentiate in prompts.
@@ -935,6 +953,7 @@ function toHindiNumber(num) {
         let currentChairman = "groq-llama-70b";
         let currentMembers = ["groq-llama-8b"];
         let currentUseRag = JSON.parse(localStorage.getItem('use_rag') || 'true');
+        let currentUseCitation = JSON.parse(localStorage.getItem('use_citation') || 'false');
         let currentEnableAlignment = JSON.parse(localStorage.getItem('enable_alignment') || 'true');
         let currentEnableDynamicDropoff = JSON.parse(localStorage.getItem('enable_dynamic_dropoff') || 'true');
         let currentEnableGraphExpansion = JSON.parse(localStorage.getItem('enable_graph_expansion') || 'false');
@@ -1012,6 +1031,7 @@ function toHindiNumber(num) {
             currentUseRag = !currentUseRag;
             localStorage.setItem('use_rag', String(currentUseRag));
             syncRagToggle();
+            syncCitationToggle();
         }
 
         function syncAlignmentToggle() {
@@ -1083,6 +1103,33 @@ function toHindiNumber(num) {
                 thumb.style.transform = 'translateX(0)';
                 thumb.style.borderColor = 'rgba(15, 23, 42, 0.15)';
             }
+        }
+
+        function syncCitationToggle() {
+            const toggleBtn = document.getElementById('citationToggleBtn');
+            const thumb = document.getElementById('citationToggleThumb');
+            if (!toggleBtn || !thumb) return;
+
+            toggleBtn.setAttribute('aria-checked', currentUseCitation ? 'true' : 'false');
+            toggleBtn.style.background = currentUseCitation ? 'var(--accent-primary)' : 'var(--btn-secondary-bg)';
+
+            if (currentUseCitation) {
+                thumb.style.transform = 'translateX(20px)';
+                thumb.style.borderColor = '#ffffff';
+            } else {
+                thumb.style.transform = 'translateX(0)';
+                thumb.style.borderColor = 'rgba(15, 23, 42, 0.15)';
+            }
+        }
+
+        function toggleCitationSetting(event) {
+            if (event) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+            currentUseCitation = !currentUseCitation;
+            localStorage.setItem('use_citation', String(currentUseCitation));
+            syncCitationToggle();
         }
 
         function toggleGraphExpansionSetting(event) {
@@ -1431,6 +1478,7 @@ renderQuestionTypes();
             document.getElementById('modeSelect').value = currentMode;
             document.getElementById('chairmanSelect').value = currentChairman;
             syncRagToggle();
+            syncCitationToggle();
             syncAlignmentToggle();
             syncDynamicDropoffToggle();
             syncGraphExpansionToggle();
@@ -1708,6 +1756,7 @@ btn.disabled = true;
                         qType: req.type,
                         num_questions: req.count,
                         use_rag: currentUseRag,
+                        use_citation: currentUseCitation,
                         enable_alignment: currentEnableAlignment,
                         enable_dynamic_dropoff: currentEnableDynamicDropoff,
                         enable_graph_expansion: currentEnableGraphExpansion,
