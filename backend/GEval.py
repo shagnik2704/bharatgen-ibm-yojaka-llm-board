@@ -1,24 +1,53 @@
-import json,random,ast
+import json, random, ast, os
 from typing import Dict, List
-from groq import Groq
 from urllib.parse import urlparse
-from transformers import AutoTokenizer, AutoModelForCausalLM
-import torch,requests,re
+import torch, requests, re
+
+try:
+    from groq import Groq
+    GROQ_AVAILABLE = True
+except ImportError:
+    GROQ_AVAILABLE = False
+    Groq = None
+
+try:
+    from openai import OpenAI
+    OLLAMA_AVAILABLE = True
+except ImportError:
+    OLLAMA_AVAILABLE = False
+    OpenAI = None
+
+try:
+    from transformers import AutoTokenizer, AutoModelForCausalLM
+    HF_AVAILABLE = True
+except ImportError:
+    HF_AVAILABLE = False
+
 groq_id_model_mapping = {
     "groq-llama-8b": "llama-3.1-8b-instant",
     "groq-llama-70b": "llama-3.3-70b-versatile",
     "rag-piped-groq-70b": "llama-3.3-70b-versatile",
     "groq-llama-guard": "meta-llama/llama-guard-4-12b",
-    'groq-qwen-32b':'qwen/qwen3-32b',
-    # Groq – GPT OSS
+    'groq-qwen-32b': 'qwen/qwen3-32b',
     "groq-gpt-oss-120b": "openai/gpt-oss-120b",
     "groq-gpt-oss-20b": "openai/gpt-oss-20b",
 }
+
+ollama_id_model_mapping = {
+    "ollama-gemma4-e4b": "gemma4:e4b",
+    "ollama-olmo-3-7b": "olmo-3:7b",
+    "ollama-phi4-mini": "phi4-mini:3.8b",
+    "ollama-qwen-2b": "qwen3.5:2b",
+    "ollama-gemma4-e2b": "gemma4:e2b",
+    "ollama-qwen-4b": "qwen3.5:4b",
+    "ollama-gemma4-31b": "gemma4:31b",
+}
+
 class GEval:
     def __init__(
         self,
-        model: str='groq-llama-8b',
-        groq_api_key: str='',
+        model: str = 'groq-llama-8b',
+        groq_api_key: str = '',
         likert_scale: List[int] = None,
     ):
         """
@@ -27,52 +56,63 @@ class GEval:
         groq_api_key : str
             Groq API key
         model : str
-            Groq model name
+            Model ID or URL
         likert_scale : list[int]
             Likert scale values (default: [1,2,3,4,5])
         """
         is_url = lambda s: all([urlparse(s).scheme, urlparse(s).netloc])
-        self.client = Groq(api_key=groq_api_key)
-        self.model_name=model
-        if(is_url(model)):
-            self._call_model=self._call_vllm
+        self.model_name = model
+        self.provider = os.getenv("LLM_PROVIDER", "groq").lower()
+        
+        # 1. Ollama Provider Routing
+        if self.provider == "ollama" or 'ollama' in model.lower():
+            if not OLLAMA_AVAILABLE:
+                raise ImportError("OpenAI package required for Ollama. Run `pip install openai`")
+            self._call_model = self._call_ollama
+            # Fallback to stripping 'ollama-' if the explicit mapping isn't found
+            self.model = ollama_id_model_mapping.get(model, model.replace('ollama-', ''))
+            self.ollama_client = OpenAI(
+                base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1"),
+                api_key="ollama" 
+            )
+            
+        # 2. VLLM / Custom URL Routing
+        elif is_url(model):
+            self._call_model = self._call_vllm
             self.model = model
-        elif('groq' in model):
-            self._call_model=self._call_groq
-            self.model = groq_id_model_mapping[model]
+            
+        # 3. Groq Provider Routing
+        elif 'groq' in model.lower():
+            if not GROQ_AVAILABLE:
+                raise ImportError("Groq package required. Run `pip install groq`")
+            self.client = Groq(api_key=groq_api_key)
+            self._call_model = self._call_groq
+            self.model = groq_id_model_mapping.get(model, model)
+            
+        # 4. HuggingFace Local Routing
         else:
-            self._call_model=self._call_hf
+            if not HF_AVAILABLE:
+                raise ImportError("Transformers package required for HF models.")
+            self._call_model = self._call_hf
             self.tokenizer = AutoTokenizer.from_pretrained(model, trust_remote_code=False)
             self.model = AutoModelForCausalLM.from_pretrained(
                 model,
                 trust_remote_code=True,
                 device_map="auto"
             )
+
         self.likert_scale = likert_scale or [1, 2, 3, 4, 5]
-        self.output_format_scale=self.generate_likert_probability_string()
+        self.output_format_scale = self.generate_likert_probability_string()
         
     def generate_likert_probability_string(self):
-        # Step 1: generate random positive numbers
         raw = [random.random() for _ in self.likert_scale]
-
-        # Step 2: normalize so they sum to 1
         total = sum(raw)
         probs = [round(x / total, 2) for x in raw]
-
-        # Step 3: adjust rounding drift to ensure exact sum = 1.00
         diff = round(1.0 - sum(probs), 2)
         probs[-1] = round(probs[-1] + diff, 2)
-
-        # Step 4: build dict with string keys
-        prob_dict = {
-            str(k): v for k, v in zip(self.likert_scale, probs)
-        }
-
-        # Step 5: return pretty JSON string
+        prob_dict = {str(k): v for k, v in zip(self.likert_scale, probs)}
         return json.dumps(prob_dict, indent=2)
-    # --------------------------------------------------
-    # 1. Generate Chain-of-Thought (CoT)
-    # --------------------------------------------------
+
     def generate_cot(self, task_description: str, evaluation_parameter: str) -> str:
         prompt = f"""
 You are an expert evaluator. 
@@ -85,12 +125,8 @@ Evaluation Parameter:
 
 Generate a concise chain-of-thought explaining how this task should be evaluated using the parameter.
 """
-
         return self._call_model(prompt)
 
-    # --------------------------------------------------
-    # 2. Generate Likert probabilities
-    # --------------------------------------------------
     def generate_likert_probabilities(
         self,
         task_description: str,
@@ -135,38 +171,31 @@ Format exactly like this:
             match = re.search(r"<OUTPUT>\s*(.*?)\s*</OUTPUT>", model_output, re.DOTALL)
             if match:
                 extracted = match.group(1)
-                model_output=extracted
+                model_output = extracted
             else:
-                model_output=model_output.replace("<OUTPUT>",'').replace('</OUTPUT>','')
+                model_output = model_output.replace("<OUTPUT>", '').replace('</OUTPUT>', '')
                 extract = lambda s: {k: float(v) for k, v in re.findall(r'"(\d+)"\s*:\s*([0-9]*\.?[0-9]+)', s)}
                 model_output = extract(model_output)
         except:
             model_output = model_output.strip()
-        if(type(model_output)==str):
-            model_output=model_output.strip()
-        elif(type(model_output)==dict):
+            
+        if type(model_output) == str:
+            model_output = model_output.strip()
+        elif type(model_output) == dict:
             return model_output
+            
         try:
             probs = json.loads(model_output)
-        except Exception as e:
+        except Exception:
             try:
                 probs = ast.literal_eval(model_output)
-            except Exception as e:
-                return {1:1.0}
+            except Exception:
+                return {1: 1.0}
         return {int(k): float(v) for k, v in probs.items()}
 
-    # --------------------------------------------------
-    # 3. Compute weighted average score
-    # --------------------------------------------------
     def compute_weighted_score(self, probabilities: Dict[int, float]) -> float:
-        return sum(
-            score * probabilities.get(score, 0.0)
-            for score in self.likert_scale
-        )
+        return sum(score * probabilities.get(score, 0.0) for score in self.likert_scale)
 
-    # --------------------------------------------------
-    # 4. Full evaluation pipeline
-    # --------------------------------------------------
     def evaluate(
         self,
         task_description: str,
@@ -174,10 +203,11 @@ Format exactly like this:
         question: str,
         answer: str
     ) -> float:
-        if('param' in self.model_name.lower()):
-            cot =''
+        if 'param' in self.model_name.lower():
+            cot = ''
         else:
             cot = self.generate_cot(task_description, evaluation_parameter)
+            
         probabilities = self.generate_likert_probabilities(
             task_description,
             evaluation_parameter,
@@ -187,21 +217,23 @@ Format exactly like this:
         )
         return self.compute_weighted_score(probabilities)
 
-    # --------------------------------------------------
-    # Internal Groq streaming call (PATCHED)
-    # --------------------------------------------------
-    def _call_model(self,prompt: str) -> str:
+    def _call_model(self, prompt: str) -> str:
         pass 
+
+    def _call_ollama(self, prompt: str) -> str:
+        completion = self.ollama_client.chat.completions.create(
+            model=self.model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2,
+            max_tokens=256,
+            stream=False 
+        )
+        return completion.choices[0].message.content.strip()
 
     def _call_groq(self, prompt: str) -> str:
         completion = self.client.chat.completions.create(
             model=self.model,
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
+            messages=[{"role": "user", "content": prompt}],
             temperature=0.2,
             max_completion_tokens=256,
             top_p=1,
@@ -210,23 +242,22 @@ Format exactly like this:
         )
 
         model_output = ""
-
         for chunk in completion:
-            if (chunk.choices[0].delta.content):
+            if chunk.choices[0].delta.content:
                 model_output += chunk.choices[0].delta.content
         return model_output.strip()
 
     def _call_vllm(self, prompt: str) -> str:
         data = {
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 2048,
-                }
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 2048,
+        }
 
-        resp = requests.post(self.model, json=data,verify=False)
-        resp=resp.json()
-        resp=resp['choices'][0]['message']['content']
+        resp = requests.post(self.model, json=data, verify=False)
+        resp = resp.json()
+        resp = resp['choices'][0]['message']['content']
         remove_think = lambda s: re.sub(r"<think>.*?</think>", "", s, flags=re.DOTALL)
-        resp=remove_think(resp)
+        resp = remove_think(resp)
         return resp.strip()
     
     def _call_hf(self, prompt: str) -> str:
@@ -241,7 +272,6 @@ Format exactly like this:
             }
         ]
 
-        # padding special token
         inputs = self.tokenizer.apply_chat_template(
             conversation=conversation,
             return_tensors="pt",
@@ -249,7 +279,6 @@ Format exactly like this:
         )
         inputs = inputs.to(self.model.device)
 
-        # --- Generate output ---
         with torch.no_grad():
             output = self.model.generate(
                 inputs,
@@ -262,7 +291,6 @@ Format exactly like this:
                 use_cache=False
             )
 
-        # Get only the generated tokens (exclude the prompt length)
         generated_tokens = output[0][inputs.shape[-1]:]
         generated_text = self.tokenizer.decode(generated_tokens, skip_special_tokens=True)
 

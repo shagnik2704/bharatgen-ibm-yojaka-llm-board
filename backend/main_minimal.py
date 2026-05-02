@@ -41,9 +41,9 @@ DEFAULT_K = 5
 DB_PATH = Path(os.getenv("MINIMAL_DB_PATH", str(BASE_DIR / "minimal_questions.db"))).resolve()
 
 
-def _ensure_groq_model_id(model_id: Optional[str], fallback: str) -> str:
+def _ensure_model_id(model_id: Optional[str], fallback: str) -> str:
     value = (model_id or "").strip()
-    if value.startswith("groq-") or value in {"rag-piped-groq-70b"}:
+    if value.startswith("groq-") or value.startswith("ollama-") or value in {"rag-piped-groq-70b"}:
         return value
     return fallback
 
@@ -56,8 +56,8 @@ def _normalize_legacy_generation_model_id(model_id: str) -> str:
     return model_id
 
 
-GEVAL_MODEL = _ensure_groq_model_id(os.getenv("GEVAL_MODEL", "groq-llama-70b"), "groq-llama-70b")
-GEVAL_MODEL_2 = _ensure_groq_model_id(os.getenv("GEVAL_MODEL_2", "groq-qwen-32b"), "groq-qwen-32b")
+GEVAL_MODEL = _ensure_model_id(os.getenv("GEVAL_MODEL", "groq-llama-70b"), "groq-llama-70b")
+GEVAL_MODEL_2 = _ensure_model_id(os.getenv("GEVAL_MODEL_2", "groq-qwen-32b"), "groq-qwen-32b")
 
 param_ncert = GEval(model=GEVAL_MODEL, groq_api_key=os.getenv("GROQ_API_KEY", "").strip(), likert_scale=[1, 2, 3, 4, 5])
 llama_bloom = GEval(model=GEVAL_MODEL_2, groq_api_key=os.getenv("GROQ_API_KEY", "").strip(), likert_scale=[1, 2, 3, 4, 5])
@@ -446,18 +446,16 @@ def resolve_groq_model(model_id: Optional[str]) -> str:
         "groq-gpt-oss-120b": "openai/gpt-oss-120b",
         "groq-gpt-oss-20b": "openai/gpt-oss-20b",
     }
-    model_id = _ensure_groq_model_id(model_id, "groq-llama-70b")
+    model_id = _ensure_model_id(model_id, "groq-llama-70b")
     return mapping.get(model_id, "llama-3.3-70b-versatile")
 
 
-ALLOWED_GROQ_MODELS = {
-    "groq-llama-8b",
-    "groq-llama-70b",
-    "rag-piped-groq-70b",
-    "groq-qwen-32b",
-    "groq-llama-guard",
-    "groq-gpt-oss-120b",
-    "groq-gpt-oss-20b"
+# Add your local models to the global allowed set
+ALLOWED_MODELS = {
+    "groq-llama-8b", "groq-llama-70b", "rag-piped-groq-70b",
+    "groq-qwen-32b", "groq-llama-guard", "groq-gpt-oss-120b", "groq-gpt-oss-20b",
+    "ollama-gemma4-e4b", "ollama-olmo-3-7b", "ollama-phi4-mini", 
+    "ollama-qwen-2b", "ollama-gemma4-e2b", "ollama-qwen-4b", "ollama-gemma4-31b"
 }
 
 
@@ -588,8 +586,12 @@ async def _score_and_enrich_questions(
 
 @app.get("/health")
 def health() -> Dict[str, Any]:
+    llm_provider = os.getenv("LLM_PROVIDER", "groq").lower()
+    is_ok = groq_client is not None if llm_provider == "groq" else True 
+
     return {
-        "ok": groq_client is not None,
+        "ok": is_ok,
+        "provider": llm_provider,
         "groq_ready": groq_client is not None,
         "rag_store": str(RAG_STORE_DIR),
         "documents_loaded": len(retriever.records),
@@ -603,21 +605,21 @@ def health() -> Dict[str, Any]:
 async def ask(req: QueryRequest) -> List[Dict[str, Any]]:
     start_time = time.time()  # Start timer
     
-    if groq_client is None:
+    if os.getenv("LLM_PROVIDER", "groq").lower() == "groq" and groq_client is None:
         raise HTTPException(status_code=500, detail="Groq client not available. Set GROQ_API_KEY and install groq.")
 
     _validate_generation_request(req)
 
-    model_id = _normalize_legacy_generation_model_id(_ensure_groq_model_id(req.model_id, "groq-llama-70b"))
-    if req.board is None and model_id not in ALLOWED_GROQ_MODELS:
+    model_id = _normalize_legacy_generation_model_id(_ensure_model_id(req.model_id, "groq-llama-70b"))
+    if req.board is None and model_id not in ALLOWED_MODELS:
         raise HTTPException(status_code=400, detail=f"Unsupported model_id '{model_id}'. Use a Groq model only.")
 
     if req.board:
-        chairman_model = _normalize_legacy_generation_model_id(_ensure_groq_model_id(req.board.chairman_model_id, "groq-llama-70b"))
-        member_models = [_normalize_legacy_generation_model_id(_ensure_groq_model_id(model, "groq-llama-8b")) for model in req.board.member_model_ids]
-        if chairman_model not in ALLOWED_GROQ_MODELS:
+        chairman_model = _normalize_legacy_generation_model_id(_ensure_model_id(req.board.chairman_model_id, "groq-llama-70b"))
+        member_models = [_normalize_legacy_generation_model_id(_ensure_model_id(model, "groq-llama-8b")) for model in req.board.member_model_ids]
+        if chairman_model not in ALLOWED_MODELS:
             raise HTTPException(status_code=400, detail=f"Unsupported chairman model '{chairman_model}'. Use a Groq model only.")
-        invalid_members = [model for model in member_models if model not in ALLOWED_GROQ_MODELS]
+        invalid_members = [model for model in member_models if model not in ALLOWED_MODELS]
         if invalid_members:
             raise HTTPException(status_code=400, detail=f"Unsupported member models: {', '.join(invalid_members)}")
 
