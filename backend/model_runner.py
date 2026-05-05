@@ -5,6 +5,9 @@ Unified RAG retrieval is handled separately by rag_retriever module.
 import asyncio
 import os
 from typing import Optional
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Determine the active provider
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq").lower()
@@ -28,6 +31,7 @@ _ollama_client = None
 
 GEN_DEFAULT_MAX_OUTPUT_TOKENS = int(os.getenv("GEN_DEFAULT_MAX_OUTPUT_TOKENS", "8192"))
 GEN_MIN_OUTPUT_TOKENS = int(os.getenv("GEN_MIN_OUTPUT_TOKENS", "256"))
+MODEL_REQUEST_TIMEOUT_S = float(os.getenv("MODEL_REQUEST_TIMEOUT_S", "120"))
 
 def set_clients(groq_client=None):
     global _groq_client
@@ -101,13 +105,22 @@ async def run_model(model_id: str, prompt: str, req=None, temperature: Optional[
     if LLM_PROVIDER == "ollama":
         if _ollama_client is None:
             raise ValueError("Ollama client not initialized. Ensure openai package is installed and URL is correct.")
-        
-        response = await _ollama_client.chat.completions.create(
-            model=target_model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=temp,
-            max_tokens=max_tokens
-        )
+
+        try:
+            response = await asyncio.wait_for(
+                _ollama_client.chat.completions.create(
+                    model=target_model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=temp,
+                    max_tokens=max_tokens
+                ),
+                timeout=MODEL_REQUEST_TIMEOUT_S,
+            )
+        except asyncio.TimeoutError as exc:
+            raise TimeoutError(
+                f"Ollama request timed out after {MODEL_REQUEST_TIMEOUT_S}s for model '{target_model}'. "
+                "Check whether Ollama is reachable, the model is loaded, or increase MODEL_REQUEST_TIMEOUT_S."
+            ) from exc
         return response.choices[0].message.content
         
     else:  # Default to Groq
@@ -115,15 +128,24 @@ async def run_model(model_id: str, prompt: str, req=None, temperature: Optional[
             raise ValueError("Groq client not initialized. Please set GROQ_API_KEY.")
             
         loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(
-            None,
-            lambda: _groq_client.chat.completions.create(
-                model=target_model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=temp,
-                max_tokens=max_tokens
+        try:
+            response = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None,
+                    lambda: _groq_client.chat.completions.create(
+                        model=target_model,
+                        messages=[{"role": "user", "content": prompt}],
+                        temperature=temp,
+                        max_tokens=max_tokens
+                    )
+                ),
+                timeout=MODEL_REQUEST_TIMEOUT_S,
             )
-        )
+        except asyncio.TimeoutError as exc:
+            raise TimeoutError(
+                f"Groq request timed out after {MODEL_REQUEST_TIMEOUT_S}s for model '{target_model}'. "
+                "Check connectivity or increase MODEL_REQUEST_TIMEOUT_S."
+            ) from exc
         return response.choices[0].message.content
 
 

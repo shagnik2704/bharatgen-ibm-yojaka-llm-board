@@ -432,11 +432,7 @@
                     </label>
                     <select id="chairmanSelect" class="w-full rounded-xl p-4 text-sm outline-none transition-all"
                         style="background: var(--bg-secondary); border: 1px solid var(--card-border); color: var(--text-primary);">
-                        <option value="groq-llama-70b">Groq Llama 3.3 70B</option>
-                        <option value="groq-llama-8b">Groq Llama 3.1 8B</option>
-                        <option value="groq-qwen-32b">Groq Qwen 3 32B</option>
-                        <option value="groq-gpt-oss-20b">Groq GPT OSS 20B</option>
-                        <option value="groq-gpt-oss-120b">Groq GPT OSS 120B</option>
+                        <!-- Options will be populated dynamically via JavaScript -->
                     </select>
                 </div>
 
@@ -950,11 +946,7 @@ function toHindiNumber(num) {
         let activeLanguage = localStorage.getItem('language') || "en";
         document.documentElement.setAttribute('data-lang', activeLanguage);
 
-
-
         let currentMode = "single";
-        let currentChairman = "groq-llama-70b";
-        let currentMembers = ["groq-llama-8b"];
         let currentUseRag = JSON.parse(localStorage.getItem('use_rag') || 'true');
         let currentUseCitation = JSON.parse(localStorage.getItem('use_citation') || 'false');
         let currentEnableAlignment = JSON.parse(localStorage.getItem('enable_alignment') || 'true');
@@ -963,13 +955,87 @@ function toHindiNumber(num) {
         let currentEnableTaskKeywords = JSON.parse(localStorage.getItem('enable_task_keywords') || 'true');
         let currentTemperature = parseFloat(localStorage.getItem('model_temperature') || '0.7');
 
-        const availableModels = [
+        // Dynamic Provider Variables
+        let availableModels = [];
+        let currentChairman = "";
+        let currentMembers = [];
+
+        const groqModels = [
             { id: "groq-llama-70b", name: "Groq Llama 3.3 70B" },
             { id: "groq-llama-8b", name: "Groq Llama 3.1 8B" },
             { id: "groq-qwen-32b", name: "Groq Qwen 3 32B" },
             { id: "groq-gpt-oss-20b", name: "Groq GPT OSS 20B" },
             { id: "groq-gpt-oss-120b", name: "Groq GPT OSS 120B" }
         ];
+
+        const ollamaModels = [
+            { id: "ollama-gemma4-e4b", name: "Ollama Gemma 4 E4B" },
+            { id: "ollama-olmo-3-7b", name: "Ollama OLMo 3 7B" },
+            { id: "ollama-phi4-mini", name: "Ollama Phi-4 Mini" },
+            { id: "ollama-qwen-2b", name: "Ollama Qwen 3.5 2B" },
+            { id: "ollama-gemma4-e2b", name: "Ollama Gemma 4 E2B" },
+            { id: "ollama-qwen-4b", name: "Ollama Qwen 3.5 4B" },
+            { id: "ollama-gemma4-31b", name: "Ollama Gemma 4 31B" }
+        ];
+
+        async function initProviderAndModels() {
+            let provider = "groq";
+            try {
+                const res = await fetch('/health');
+                const data = await res.json();
+                if (data.provider) provider = data.provider;
+            } catch (e) {
+                console.warn("Failed to fetch provider, defaulting to Groq", e);
+            }
+
+            // Assign models based on provider
+            if (provider === 'ollama') {
+                availableModels = ollamaModels;
+                currentChairman = "ollama-gemma4-e4b"; 
+                currentMembers = ["ollama-qwen-2b"]; 
+            } else {
+                availableModels = groqModels;
+                currentChairman = "groq-llama-70b";
+                currentMembers = ["groq-llama-8b"];
+            }
+
+            // Populate the Dropdown
+            const selectEl = document.getElementById('chairmanSelect');
+            selectEl.innerHTML = '';
+            availableModels.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m.id;
+                opt.textContent = m.name;
+                selectEl.appendChild(opt);
+            });
+
+            // Set UI defaults
+            selectEl.value = currentChairman;
+            initializeMemberCheckboxes();
+            updateChairmanLabel();
+        }
+
+        function normalizeLegacyModelId(modelId) {
+            if (modelId === 'rag-piped-groq-70b') {
+                return 'groq-llama-70b';
+            }
+            return modelId;
+        }
+
+        function getModelDisplayName(modelId) {
+            const normalized = normalizeLegacyModelId(modelId);
+            const fromList = availableModels.find(m => m.id === normalized)?.name;
+            return fromList || normalized || 'Unknown';
+        }
+
+        function ensureCurrentChairmanIsValid() {
+            currentChairman = normalizeLegacyModelId(currentChairman);
+            const hasModel = availableModels.some(model => model.id === currentChairman);
+            if (!hasModel && availableModels.length > 0) {
+                currentChairman = availableModels[0].id; // Fallback to first available
+                document.getElementById('chairmanSelect').value = currentChairman;
+            }
+        }
 
         function normalizeLegacyModelId(modelId) {
             if (modelId === 'rag-piped-groq-70b') {
@@ -1203,6 +1269,7 @@ function toHindiNumber(num) {
         // Initialize member checkboxes
         function initializeMemberCheckboxes() {
             const container = document.getElementById('memberCheckboxes');
+            if (!container) return;
             container.innerHTML = '';
             availableModels.forEach(model => {
                 const div = document.createElement('div');
@@ -1265,30 +1332,25 @@ function toHindiNumber(num) {
                     ? uiTranslations.hi.misc.complexity
                     : 'Complexity Level';
         }
-        function updateChairmanLabel() {
-            ensureCurrentChairmanIsValid();
-            const chairmanId = document.getElementById('chairmanSelect').value;
-            const chairmanName = getModelDisplayName(chairmanId);
-            document.getElementById('currentModelLabel').innerText =
-                currentMode === 'council' ? `Council Chair: ${chairmanName}` : `Model: ${chairmanName}`;
-            updateMemberSelection();
+
+    async function initializeApp() {
+            await initProviderAndModels();
+            
+            document.getElementById('modeSelect').value = currentMode;
+            updateModeUI();
+            
+            document.getElementById('languageDropdown').value = activeLanguage;
+            updateDifficultyLabels();
+            updateShuffleLabel();
+            updateGenerateButton();
+            updateQuestionDistributionLabel();
+            updateWorkspaceText();
+            updateStartChatButton();
+            loadCourseCatalog();
         }
 
-        // Initialize on page load
-        initializeMemberCheckboxes();
-        document.getElementById('modeSelect').value = currentMode;
-        document.getElementById('chairmanSelect').value = currentChairman;
-        updateModeUI();
-        updateChairmanLabel();
-        // Initialize language on page load
-        document.getElementById('languageDropdown').value = activeLanguage;
-        updateDifficultyLabels();
-        updateShuffleLabel();
-        updateGenerateButton();
-        updateQuestionDistributionLabel();
-        updateWorkspaceText();
-        updateStartChatButton();
-        loadCourseCatalog();
+        // Run the app
+        initializeApp();
 
         function updateStartChatButton(){
     const btn = document.getElementById("startChatBtn");
@@ -1488,6 +1550,21 @@ renderQuestionTypes();
             syncTaskKeywordsToggle();
             syncTemperatureControls();
             updateModeUI();
+            updateMemberSelection();
+        }
+
+        function updateChairmanLabel() {
+            ensureCurrentChairmanIsValid();
+            const chairmanId = document.getElementById('chairmanSelect').value;
+            const chairmanName = getModelDisplayName(chairmanId);
+            
+            const modelLabelEl = document.getElementById('currentModelLabel');
+            if (modelLabelEl) {
+                modelLabelEl.innerText = currentMode === 'council' 
+                    ? `Council Chair: ${chairmanName}` 
+                    : `Model: ${chairmanName}`;
+            }
+            
             updateMemberSelection();
         }
 
