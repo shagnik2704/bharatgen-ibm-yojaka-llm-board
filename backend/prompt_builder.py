@@ -35,7 +35,11 @@ def build_prompt_from_request(req: Any, chunk_text: str) -> str:
         )
 
     use_citation = bool(getattr(req, "use_citation", False))
-    citation_instructions = ""
+    citation_instructions = (
+        "### CITATION DISABLED\n"
+        "Do not mention citations, the source material, retrieval, or phrases like 'based on source material' or 'according to the source material' in the question or answer. "
+        "Write the output as a normal assessment prompt with no source attribution language.\n\n"
+    )
     if use_citation:
         citation_instructions = (
             "### CITATION-BASED MODE (ENFORCE)\n"
