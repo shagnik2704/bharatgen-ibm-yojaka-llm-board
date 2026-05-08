@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Questions Dashboard</title>
+<style>
+:root {
+    --bg: #f4f6fb;
+    --card: #ffffff;
+    --text: #0f172a;
+    --muted: #64748b;
+    --line: #e2e8f0;
+    --primary: #2563eb;
+    --success: #16a34a;
+    --warn: #ca8a04;
+    --danger: #dc2626;
+}
+
+* { box-sizing: border-box; }
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", Tahoma, sans-serif;
+    padding: 28px;
+}
+
+.shell {
+    max-width: 1200px;
+    margin: 0 auto;
+    background: var(--card);
+    border-radius: 14px;
+    box-shadow: 0 14px 30px rgba(15,23,42,.08);
+    padding: 20px;
+}
+
+.topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+h2 {
+    margin: 0;
+    font-size: 22px;
+}
+
+.btn {
+    border: none;
+    border-radius: 8px;
+    padding: 9px 14px;
+    background: var(--primary);
+    color: white;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.secondary { background: #475569; }
+
+.table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 820px;
+}
+
+.table th,
+.table td {
+    padding: 12px 10px;
+    border-bottom: 1px solid var(--line);
+    font-size: 14px;
+    vertical-align: top;
+}
+
+.table th {
+    text-align: left;
+    background: #f8fafc;
+    color: #334155;
+    font-size: 12px;
+    letter-spacing: .4px;
+    text-transform: uppercase;
+}
+
+.table th:nth-child(5),
+.table td:nth-child(5),
+.table th:nth-child(6),
+.table td:nth-child(6) {
+    text-align: center;
+}
+
+.preview {
+    max-width: 430px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 9px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    border: 1px solid transparent;
+}
+
+.badge.single { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+.badge.council { background: #eef2ff; color: #4338ca; border-color: #c7d2fe; }
+.badge.rag { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+.badge.no-rag { background: #f8fafc; color: #475569; border-color: #e2e8f0; }
+.badge.citation { background: #e0e7ff; color: #3730a3; border-color: #c7d2fe; }
+
+.align {
+    font-weight: 700;
+}
+
+#status {
+    margin-top: 12px;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.footer-actions {
+    margin-top: 12px;
+}
+
+.modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(2,6,23,.55);
+    backdrop-filter: blur(3px);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-inner {
+    width: min(1040px, 92vw);
+    max-height: 88vh;
+    overflow-y: auto;
+    background: var(--card);
+    border-radius: 14px;
+    padding: 20px;
+    box-shadow: 0 26px 70px rgba(2,6,23,.4);
+}
+
+.close {
+    float: right;
+    background: transparent;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #64748b;
+}
+
+.section {
+    margin-top: 14px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px;
+    background: #fcfdff;
+}
+
+.section h4 {
+    margin: 0 0 10px;
+    font-size: 13px;
+    letter-spacing: .4px;
+    text-transform: uppercase;
+    color: #334155;
+}
+
+.qa {
+    white-space: pre-wrap;
+    line-height: 1.55;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
+}
+
+.kv {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px;
+    background: #fff;
+}
+
+.kv b {
+    display: block;
+    font-size: 11px;
+    text-transform: uppercase;
+    color: #64748b;
+    margin-bottom: 4px;
+}
+
+.kv span {
+    font-size: 13px;
+    color: #0f172a;
+    word-break: break-word;
+}
+
+.progress {
+    margin-top: 8px;
+    background: #e2e8f0;
+    height: 9px;
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.progress > i {
+    display: block;
+    height: 100%;
+}
+
+.member {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px;
+    background: #fff;
+    margin-bottom: 8px;
+}
+
+.member-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 13px;
+    margin-bottom: 6px;
+}
+
+.member-body {
+    font-size: 13px;
+    color: #334155;
+    white-space: pre-wrap;
+}
+
+.rubric-box {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 12px;
+    background: #f8fffb;
+}
+
+.rubric-item {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px 12px;
+    background: #fff;
+}
+
+@media (max-width: 700px) {
+    body { padding: 14px; }
+    .shell { padding: 14px; }
+}
+</style>
+</head>
+<body>
+<div class="shell">
+    <div class="topbar">
+        <h2>Questions Dashboard</h2>
+        <div style="display:flex; gap:8px;">
+            <button class="btn secondary" onclick="window.location.href='/'">Home</button>
+        </div>
+    </div>
+
+    <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Question</th>
+                    <th>Mode</th>
+                    <th>RAG</th>
+                    <th>Citation Mode</th>
+                    <th>Alignment</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+        </table>
+    </div>
+
+    <div class="footer-actions">
+        <button id="loadbtn" class="btn" onclick="loadMore()">Load More</button>
+        <div id="status"></div>
+    </div>
+</div>
+
+<div class="modal" id="modal">
+    <div class="modal-inner">
+        <button class="close" onclick="closeModal()">&times;</button>
+        <div id="modalBody"></div>
+    </div>
+</div>
+
+<script>
+let offset = 0;
+const limit = 25;
+let serial = 1;
+
+const rowsEl = document.getElementById('rows');
+const statusEl = document.getElementById('status');
+const loadBtn = document.getElementById('loadbtn');
+const modal = document.getElementById('modal');
+const modalBody = document.getElementById('modalBody');
+
+function safeNumber(value, fallback = 0) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
+}
+
+function esc(str) {
+    return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+function modeBadge(question) {
+    const hasBoard = !!question.board_metadata_json || !!question.board_metadata;
+    return hasBoard
+        ? '<span class="badge council">Council</span>'
+        : '<span class="badge single">Single</span>';
+}
+
+function ragBadge(question) {
+    return question.is_rag
+        ? '<span class="badge rag">RAG</span>'
+        : '<span class="badge no-rag">No RAG</span>';
+}
+
+function citationBadge(question) {
+    return question.use_citation
+        ? '<span class="badge citation" title="Citation Mode Enabled">ON</span>'
+        : '<span class="badge no-rag" title="Citation Mode Disabled">OFF</span>';
+}
+
+function scoreColor(value) {
+    if (value >= 3.5) return 'var(--success)';
+    if (value >= 2) return 'var(--warn)';
+    return 'var(--danger)';
+}
+
+function alignmentCell(value) {
+    if (value === null || value === undefined) {
+        return '<span class="align" style="color:#64748b">N/A</span>';
+    }
+    const n = safeNumber(value, 0);
+    return `<span class="align" style="color:${scoreColor(n)}">${n.toFixed(2)} / 5</span>`;
+}
+
+function renderKVGrid(obj) {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+        return '<div style="color:#64748b;font-size:13px;">No data</div>';
+    }
+    const entries = Object.entries(obj).filter(([,v]) => v !== null && v !== undefined && v !== '');
+    if (!entries.length) return '<div style="color:#64748b;font-size:13px;">No data</div>';
+
+    return `<div class="grid">${entries.map(([k,v]) => `
+        <div class="kv">
+            <b>${esc(k)}</b>
+            <span>${esc(typeof v === 'object' ? JSON.stringify(v) : v)}</span>
+        </div>
+    `).join('')}</div>`;
+}
+
+function progressBar(score) {
+    const pct = Math.max(0, Math.min(100, Math.round((safeNumber(score) / 5) * 100)));
+    const color = pct >= 70 ? '#16a34a' : (pct >= 40 ? '#ca8a04' : '#dc2626');
+    return `
+        <div style="font-size:13px;font-weight:700;color:${color};">${safeNumber(score).toFixed(2)} / 5 (${pct}%)</div>
+        <div class="progress"><i style="width:${pct}%;background:${color};"></i></div>
+    `;
+}
+
+function normalizeBoardMetadata(q) {
+    if (q.board_metadata && typeof q.board_metadata === 'object') return q.board_metadata;
+    if (q.board_metadata_json) {
+        try { return JSON.parse(q.board_metadata_json); } catch { return null; }
+    }
+    return null;
+}
+
+function normalizeRubric(q) {
+    if (q.rubric && typeof q.rubric === 'object') return q.rubric;
+    if (q.rubric_json) {
+        try { return JSON.parse(q.rubric_json); } catch { return null; }
+    }
+    return null;
+}
+
+function renderRubric(rubric, mainAnswer) {
+    if (!rubric || typeof rubric !== 'object') {
+        return '<div style="color:#64748b;font-size:13px;">No rubric available.</div>';
+    }
+
+    const marks = Array.isArray(rubric.marks) ? rubric.marks : [];
+    const keyPoints = Array.isArray(rubric.key_points) ? rubric.key_points : [];
+    const totalMarks = marks.reduce((sum, item) => {
+        if (item && typeof item === 'object') {
+            const value = Number(item.marks ?? item.score ?? item.value ?? 0);
+            return sum + (Number.isFinite(value) ? value : 0);
+        }
+        return sum;
+    }, 0) || Number(rubric.total_marks ?? rubric.totalMarks ?? 10);
+
+    const answerHtml = mainAnswer 
+        ? `<div class="rubric-item" style="margin-bottom:10px;"><b>Suggested answer</b><div style="margin-top:5px;">${esc(mainAnswer)}</div></div>`
+        : '';
+
+    const marksHtml = marks.length
+        ? marks.map((item, idx) => {
+            if (item && typeof item === 'object') {
+                return `
+                    <div class="rubric-item">
+                        <div class="member-head" style="margin-bottom:0;">
+                            <strong>${esc(item.criterion || item.label || item.name || `Criterion ${idx + 1}`)}</strong>
+                            <span>${esc(item.marks ?? item.score ?? item.value ?? '')}</span>
+                        </div>
+                    </div>
+                `;
+            }
+            return `<div class="rubric-item">${esc(item)}</div>`;
+        }).join('')
+        : '<div style="color:#64748b;font-size:13px;">No marking breakdown supplied.</div>';
+
+    const keyPointsHtml = keyPoints.length
+        ? `<div class="grid" style="margin-top:10px;">${keyPoints.map(point => `
+            <div class="kv"><b>Key point</b><span>${esc(point)}</span></div>
+        `).join('')}</div>`
+        : '<div style="color:#64748b;font-size:13px;">No key points supplied.</div>';
+
+    return `
+        <div class="rubric-box">
+            ${answerHtml}
+            <div class="member-head" style="margin-bottom:10px;">
+                <strong>Teacher Rubric</strong>
+                <span>Total: ${esc(totalMarks)} marks</span>
+            </div>
+            <div style="margin-bottom:12px; font-size:13px; color:#334155; white-space: pre-wrap;">
+                ${esc(rubric.answer || 'No suggested answer supplied.')}
+            </div>
+            <div style="font-size:12px; font-weight:700; letter-spacing:.4px; text-transform:uppercase; color:#64748b; margin-bottom:8px;">Marking breakdown</div>
+            <div style="display:grid; gap:8px;">${marksHtml}</div>
+            <div style="font-size:12px; font-weight:700; letter-spacing:.4px; text-transform:uppercase; color:#64748b; margin:12px 0 8px;">Key points</div>
+            ${keyPointsHtml}
+        </div>
+    `;
+}
+
+function renderMemberOpinions(opinions) {
+    if (!Array.isArray(opinions) || !opinions.length) {
+        return '<div style="color:#64748b;font-size:13px;">No member reviews captured.</div>';
+    }
+
+    return opinions.map((op, idx) => `
+        <div class="member">
+            <div class="member-head">
+                <strong>Member ${String.fromCharCode(65 + idx)} - ${esc(op.model_id || 'Unknown')}</strong>
+                <span>Rating: ${esc(op.rating ?? 'N/A')}</span>
+            </div>
+            <div class="member-body"><b>Feedback:</b> ${esc(op.feedback || 'No feedback')}</div>
+            ${op.alternative && String(op.alternative).toLowerCase() !== 'none'
+                ? `<div class="member-body" style="margin-top:6px;"><b>Alternative:</b> ${esc(op.alternative)}</div>`
+                : ''}
+        </div>
+    `).join('');
+}
+
+async function loadMore() {
+    const resp = await fetch(`/api/questions?offset=${offset}&limit=${limit}`);
+    const data = await resp.json();
+
+    if (!Array.isArray(data) || !data.length) {
+        statusEl.textContent = 'All questions loaded.';
+        loadBtn.disabled = true;
+        return;
+    }
+
+    data.forEach((q) => {
+        const tr = document.createElement('tr');
+        const preview = (q.question || '').replace(/\s+/g, ' ').trim();
+
+        tr.innerHTML = `
+            <td>${serial++}</td>
+            <td><div class="preview" title="${esc(preview)}">${esc(preview || 'No question text')}</div></td>
+            <td>${modeBadge(q)}</td>
+            <td>${ragBadge(q)}</td>
+            <td>${citationBadge(q)}</td>
+            <td>${alignmentCell(q.alignment_score)}</td>
+            <td><button class="btn" onclick="openDetail('${q.id}')">View</button></td>
+        `;
+        rowsEl.appendChild(tr);
+    });
+
+    offset += limit;
+}
+
+async function openDetail(id) {
+    const resp = await fetch(`/api/question/${id}`);
+    const q = await resp.json();
+
+    const score = q.alignment_score;
+    const scores = q.scores || null;
+    const board = normalizeBoardMetadata(q);
+    const rubric = normalizeRubric(q);
+
+    modalBody.innerHTML = `
+        <h3 style="margin:0 0 8px;font-size:20px;">Question Detail</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+            ${modeBadge(q)}
+            ${ragBadge(q)}
+            <span class="badge ${q.use_citation ? 'citation' : 'no-rag'}">Citation: ${q.use_citation ? 'ON' : 'OFF'}</span>
+            <span class="badge no-rag">Model: ${esc(q.model_id || 'N/A')}</span>
+        </div>
+
+        <div class="section">
+            <h4>Question</h4>
+            <div class="qa">${esc(q.question)}</div>
+        </div>
+
+        <div class="section">
+            <h4>Extracted Citation</h4>
+            <div class="qa" style="font-style: italic; color: #475569; border-left: 3px solid #cbd5e1; padding-left: 12px;">
+                ${q.citation ? `"${esc(q.citation)}"` : '<span style="font-style: normal; font-size: 13px;">No citation extracted for this question.</span>'}
+            </div>
+        </div>
+
+        <div class="section">
+            <h4>Rubric</h4>
+            ${renderRubric(rubric, q.answer)}
+        </div>
+
+        <div class="section">
+            <h4>Answer</h4>
+            <div class="qa">${esc(q.rubric?.answer || q.answer || 'No rubric answer available')}</div>
+        </div>
+
+        <div class="section">
+            <h4>Alignment Score</h4>
+            ${score === null || score === undefined
+                ? '<div style="color:#64748b;font-size:13px;">No alignment score available</div>'
+                : progressBar(score)}
+        </div>
+
+        <div class="section">
+            <h4>Evaluation Scores</h4>
+            ${renderKVGrid(scores)}
+        </div>
+
+        <div class="section">
+            <h4>Source Metadata</h4>
+            ${renderKVGrid(q.source_meta || q.source_meta_json)}
+        </div>
+
+        <div class="section">
+            <h4>Request Metadata</h4>
+            ${renderKVGrid(q.req)}
+        </div>
+
+        ${board ? `
+            <div class="section">
+                <h4>Board Metadata</h4>
+                <div class="grid" style="margin-bottom:10px;">
+                    <div class="kv"><b>Chairman</b><span>${esc(board.chairman || 'N/A')}</span></div>
+                    <div class="kv"><b>Members</b><span>${esc((board.members || []).join(', ') || 'N/A')}</span></div>
+                    <div class="kv"><b>Language</b><span>${esc(board.language || 'N/A')}</span></div>
+                </div>
+                <div>
+                    <h4 style="margin-top:0;">Member Opinions</h4>
+                    ${renderMemberOpinions(board.member_opinions)}
+                </div>
+            </div>
+        ` : ''}
+    `;
+
+    modal.style.display = 'flex';
+}
+
+function closeModal() {
+    modal.style.display = 'none';
+}
+
+window.onclick = function (e) {
+    if (e.target === modal) closeModal();
+};
+
+loadMore();
+</script>
+</body>
+</html>

@@ -5,13 +5,36 @@ from datetime import datetime
 import uuid
 import json
 import os
+from pathlib import Path
 
-# Use /tmp for OpenShift (writable directory)
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:////tmp/bharatgen_questions.db")
+def _prepare_database_url() -> str:
+    """Prepare a usable DATABASE_URL and create parent folders for sqlite files."""
+    raw_url = os.getenv("DATABASE_URL")
+
+    if not raw_url:
+        default_db = Path(__file__).resolve().parent / "data" / "bharatgen_questions.db"
+        default_db.parent.mkdir(parents=True, exist_ok=True)
+        return f"sqlite:///{default_db.as_posix()}"
+
+    if raw_url.startswith("sqlite:///") and raw_url != "sqlite:///:memory:":
+        db_path_str = raw_url[len("sqlite:///"):]
+        if db_path_str:
+            db_path = Path(db_path_str)
+            if not db_path.is_absolute():
+                db_path = (Path(__file__).resolve().parent / db_path).resolve()
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            return f"sqlite:///{db_path.as_posix()}"
+
+    return raw_url
+
+
+DATABASE_URL = _prepare_database_url()
+
+connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False}
+    connect_args=connect_args
 )
 
 SessionLocal = sessionmaker(bind=engine)

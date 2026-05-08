@@ -21,6 +21,14 @@ transformer/
 data/
 indexes/
 vector_store/
+rag_store_books/
+indexed_for_RAG/
+CHECK_rag_store_books/
+draft_RAG/
+testing/
+books/
+*.log
+*.db
 
 # IDE
 .vscode/

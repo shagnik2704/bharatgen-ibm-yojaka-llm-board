@@ -166,7 +166,7 @@
 
 #     except Exception as e:
 #         raise HTTPException(status_code=500, detail=str(e))
-from prompt import GUARDRAILS_PROMPT
+from backend.guardrails import GUARDRAILS_PROMPT
 from GEval import GEval
 import os
 import re
@@ -538,6 +538,51 @@ def _get_books_root():
     return (project_root / "data").resolve()
 
 
+def _extract_block_label(file_name: str) -> str:
+    stem = Path(file_name).stem
+    match = re.search(r"block\s*(\d+)", stem, re.IGNORECASE)
+    if match:
+        return f"Block {int(match.group(1))}"
+    return stem
+
+
+@app.get("/course-blocks", tags=["Chapters"])
+async def list_course_blocks():
+    """List courses and their blocks from books/*/egyankosh/*.pdf."""
+    books_root = _get_books_root()
+    if not books_root.exists() or not books_root.is_dir():
+        return {"courses": []}
+
+    course_rows = []
+    for course_dir in sorted([p for p in books_root.iterdir() if p.is_dir()], key=lambda p: p.name.lower()):
+        egyankosh_dir = course_dir / "egyankosh"
+        if not egyankosh_dir.is_dir():
+            continue
+
+        pdfs = sorted([p for p in egyankosh_dir.glob("*.pdf")], key=lambda p: p.name.lower())
+        blocks = []
+        for pdf in pdfs:
+            blocks.append(_extract_block_label(pdf.name))
+
+        # Keep unique blocks and stable ordering by block number where present.
+        uniq_blocks = sorted(
+            set(blocks),
+            key=lambda b: (int(re.search(r"\d+", b).group()) if re.search(r"\d+", b) else 10_000, b.lower())
+        )
+
+        if not uniq_blocks:
+            continue
+
+        course_rows.append(
+            {
+                "course_name": course_dir.name,
+                "blocks": uniq_blocks,
+            }
+        )
+
+    return {"courses": course_rows}
+
+
 @app.get("/api/pdf", tags=["Explore"])
 async def serve_pdf(path: str):
     """
@@ -627,6 +672,13 @@ async def get_reference(body: ReferenceRequest):
     """
     import httpx
 
+    allow_nxtgen_cloud = os.getenv("ALLOW_NXTGEN_CLOUD", "false").strip().lower() in ("1", "true", "yes", "on")
+    if not allow_nxtgen_cloud:
+        raise HTTPException(
+            status_code=503,
+            detail="NxtGen cloud access is disabled by ALLOW_NXTGEN_CLOUD=false"
+        )
+
     reference_url = os.getenv("REFERENCE_API_URL", "https://edu-rag-bkend.impactsummit.nxtgen.cloud/reference")
 
     try:
@@ -660,6 +712,13 @@ async def chat_completions(body: ChatCompletionRequest):
     This endpoint forwards chat requests to the model serve endpoint with optional system context.
     """
     import httpx
+
+    allow_nxtgen_cloud = os.getenv("ALLOW_NXTGEN_CLOUD", "false").strip().lower() in ("1", "true", "yes", "on")
+    if not allow_nxtgen_cloud:
+        raise HTTPException(
+            status_code=503,
+            detail="NxtGen cloud access is disabled by ALLOW_NXTGEN_CLOUD=false"
+        )
 
     chat_url = os.getenv("CHAT_COMPLETION_URL", "https://model-serve-param-2-9.impactsummit.nxtgen.cloud/v1/chat/completions")
 

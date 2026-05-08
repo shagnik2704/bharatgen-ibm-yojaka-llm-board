@@ -2,16 +2,28 @@
 LLM Council module - implements the three-stage board flow for collaborative question generation.
 Inspired by karpathy/llm-council but adapted for question generation domain.
 Uses Groq models only.
+Unified RAG retrieval via MinimalRAGRetriever.
 """
 import asyncio
+import os
+from pathlib import Path
 from typing import List, Dict, Optional, Tuple
-from model_runner import run_model, needs_rag, get_rag_context
+try:
+    from .model_runner import run_model
+    from .rag_retriever import MinimalRAGRetriever
+    from .prompt_builder import get_generation_question_count, is_bloom_level_2
+
+except ImportError:
+    from model_runner import run_model
+    from rag_retriever import MinimalRAGRetriever
+    from prompt_builder import get_generation_question_count, is_bloom_level_2
 
 
 def build_member_generate_one_prompt(subject: str, chapter: str, theme: str, qType: str,
                                       depth: str, language: str,
                                       topic_chunk: str = None,
-                                      theme_chunk: str = None) -> str:
+                                      theme_chunk: str = None,
+                                      use_citation: bool = False) -> str:
     """Build the prompt for a board member to generate exactly one question (used in Param-orchestrator flow)."""
     lang = (language or "en").lower()
     if lang == "hi":
@@ -29,6 +41,14 @@ def build_member_generate_one_prompt(subject: str, chapter: str, theme: str, qTy
         rag_block = (
             "\n\n### SOURCE MATERIAL (RAG CONTEXT)\n"
             f"{topic_chunk}\n\n"
+        )
+    citation_instructions = ""
+    if use_citation:
+        citation_instructions = (
+            "### CITATION-BASED MODE (ENFORCE)\n"
+            "If citation-based mode is active: select exactly one verbatim quote from the SOURCE MATERIAL that directly supports the correct answer. "
+            "In the <Answer> block, first provide the correct answer, then include a single citation line prefixed with 'Citation: ' containing the verbatim quote. "
+            "Remove any parenthetical citation markers (e.g., '(p. 175)'). Do not include multiple quotes or metadata.\n\n"
         )
     return (
         "### ROLE\n"
@@ -48,6 +68,7 @@ def build_member_generate_one_prompt(subject: str, chapter: str, theme: str, qTy
         f"- QUANTITY: 1 (generate exactly one question)\n"
         f"{rag_block}"
         f"{lang_block}"
+        f"{citation_instructions}"
         "### CONSTRAINTS\n"
         "1. Content must be strictly based on NCERT syllabus standards.\n"
         "2. Distractors for MCQs must be 'Common Misconceptions'.\n"
@@ -63,9 +84,11 @@ def build_member_generate_one_prompt(subject: str, chapter: str, theme: str, qTy
 def build_chairman_proposal_prompt(subject: str, chapter: str, theme: str, qType: str, 
                                    depth: str, num_questions: int, language: str,
                                    topic_chunk: str = None, 
-                                   theme_chunk: str = None) -> str:
+                                   theme_chunk: str = None,
+                                   use_citation: bool = False) -> str:
     """Build the prompt for the chairman's initial proposal."""
     lang = (language or "en").lower()
+    question_count = get_generation_question_count(depth, num_questions)
     if lang == "hi":
         lang_block = (
             "### OUTPUT LANGUAGE (CRITICAL — FOLLOW STRICTLY)\n"
@@ -85,7 +108,61 @@ def build_chairman_proposal_prompt(subject: str, chapter: str, theme: str, qType
             "\n\n### SOURCE MATERIAL (RAG CONTEXT)\n"
             f"{topic_chunk}\n\n"
         )
+    citation_instructions = ""
+    if use_citation:
+        citation_instructions = (
+            "### CITATION-BASED MODE (ENFORCE)\n"
+            "When citation-based mode is active: select exactly one verbatim quote from the SOURCE MATERIAL that directly supports the answer. "
+            "In the output, include the quote in the Answer block prefixed with 'Citation: ' after the correct answer. "
+            "Strip parenthetical citation markers like '(p. 175)'. Do not include multiple quotes or extra metadata.\n\n"
+        )
     
+    if is_bloom_level_2(depth):
+        prompt = (
+        f"{lang_block}"
+        "### ROLE\n"
+        "You are the Chairman of an LLM Board responsible for generating high-quality academic assessment questions. "
+        "Your role is to propose initial question drafts that will be reviewed by board members.\n\n"
+        "### COGNITIVE DEPTH CONTEXT (Bloom's Taxonomy x DOK)\n"
+        "You must adhere to the following definitions for the requested DEPTH:\n"
+        "- DOK 1 (Recall/Remember): Recall of a fact, term, or property. (e.g., Define, List, State)\n"
+        "- DOK 2 (Skills & Concepts/Understand & Apply): Use of information or conceptual knowledge. (e.g., Describe, Classify, Solve routine problems)\n"
+        "- DOK 3 (Strategic Thinking/Analyze & Evaluate): Reasoning, planning, and using evidence. (e.g., Explain why, Non-routine problem solving, Compare/Contrast phenomena)\n"
+        "- DOK 4 (Extended Thinking/Create): Complex synthesis and connection across chapters. (e.g., Create a model, Design an experiment, Critique a theoretical framework)\n\n"
+        "### PARAMETERS\n"
+        f"- SUBJECT: {subject}\n"
+        f"- CHAPTER: {chapter}\n"
+        f"- THEME: {theme}\n"
+        f"- QUESTION TYPE: {qType}\n"
+        f"- TARGET DEPTH: {depth}\n"
+        f"- QUANTITY: {question_count}\n"
+        f"{rag_context}"
+        f"{citation_instructions}"
+        "### CONSTRAINTS\n"
+        "1. Content must be strictly based on NCERT syllabus standards.\n"
+        "2. Questions must demonstrate Bloom level 2 understanding or application, not simple recall.\n"
+        "3. Distractors for MCQs must be 'Common Misconceptions'—they should look correct to a student who has not understood the core concept.\n"
+        "4. For numericals, provide a step-by-step logical breakdown in the Answer section.\n"
+        "5. Use LaTeX for all mathematical formulas and chemical equations (e.g., $E=mc^2$).\n\n"
+        f"{lang_reminder}"
+        "### OUTPUT FORMAT (STRICT JSON ONLY)\n"
+        "Return a JSON array with exactly 2 objects. Each object must contain question, answer, and rubric fields.\n"
+        "rubric must include answer, marks, and key_points. The marks entries must sum to 10.\n"
+        "Schema:\n"
+        "[\n"
+        "  {\n"
+        '    "question": "...",\n'
+        '    "answer": "...",\n'
+        '    "rubric": {\n'
+        '      "answer": "...",\n'
+        '      "marks": [{"criterion": "...", "marks": 2}],\n'
+        '      "key_points": ["...", "..."]\n'
+        "    }\n"
+        "  }\n"
+        "]"
+        )
+        return prompt
+
     prompt = (
         f"{lang_block}"
         "### ROLE\n"
@@ -105,8 +182,9 @@ def build_chairman_proposal_prompt(subject: str, chapter: str, theme: str, qType
         f"- THEME: {theme}\n"
         f"- QUESTION TYPE: {qType}\n"
         f"- TARGET DEPTH: {depth}\n"
-        f"- QUANTITY: {num_questions}\n"
+        f"- QUANTITY: {question_count}\n"
         f"{rag_context}"
+        f"{citation_instructions}"
         
         "### CONSTRAINTS\n"
         "1. Content must be strictly based on NCERT syllabus standards.\n"
@@ -126,7 +204,8 @@ def build_chairman_proposal_prompt(subject: str, chapter: str, theme: str, qType
 def build_member_review_prompt(subject: str, chapter: str, theme: str, qType: str, 
                                 depth: str, language: str,
                                 chairman_proposal: str, member_letter: str,
-                                topic_chunk: str = None, theme_chunk: str = None) -> str:
+                                topic_chunk: str = None, theme_chunk: str = None,
+                                use_citation: bool = False) -> str:
     """Build the prompt for a board member to review the chairman's proposal."""
     lang = (language or "en").lower()
     if lang == "hi":
@@ -148,6 +227,11 @@ def build_member_review_prompt(subject: str, chapter: str, theme: str, qType: st
             "\n\n### SOURCE MATERIAL (RAG CONTEXT)\n"
             f"{topic_chunk}\n\n"
         )
+    citation_instructions = ""
+    if use_citation:
+        citation_instructions = (
+            "\nNOTE: This review is for a citation-based proposal. Quotes in the Chairman's proposal are verbatim excerpts from the source; check that they support the answer and that parenthetical citation markers have been stripped.\n"
+        )
     
     prompt = (
         f"{lang_block}"
@@ -162,6 +246,7 @@ def build_member_review_prompt(subject: str, chapter: str, theme: str, qType: st
         f"- QUESTION TYPE: {qType}\n"
         f"- TARGET DEPTH: {depth}\n"
         f"{rag_context}"
+        f"{citation_instructions}"
         
         "### CHAIRMAN'S PROPOSAL\n"
         "The Chairman has proposed the following question(s):\n"
@@ -190,9 +275,11 @@ def build_member_review_prompt(subject: str, chapter: str, theme: str, qType: st
 def build_chairman_synthesis_prompt(subject: str, chapter: str, theme: str, qType: str,
                                      depth: str, language: str,
                                      original_proposal: str, member_reviews: List[Dict],
-                                     topic_chunk: str = None, theme_chunk: str = None) -> str:
+                                     topic_chunk: str = None, theme_chunk: str = None,
+                                     use_citation: bool = False) -> str:
     """Build the prompt for the chairman to synthesize final questions based on member feedback."""
     lang = (language or "en").lower()
+    question_count = get_generation_question_count(depth, 2)
     if lang == "hi":
         lang_block = (
             "### OUTPUT LANGUAGE (CRITICAL — FOLLOW STRICTLY)\n"
@@ -212,6 +299,12 @@ def build_chairman_synthesis_prompt(subject: str, chapter: str, theme: str, qTyp
             "\n\n### SOURCE MATERIAL (RAG CONTEXT)\n"
             f"{topic_chunk}\n\n"
         )
+    citation_instructions = ""
+    if use_citation:
+        citation_instructions = (
+            "### CITATION-BASED MODE (ENFORCE)\n"
+            "When finalising synthesis for citation-based proposals, ensure the Answer includes the correct answer followed by exactly one verbatim quote from the SOURCE MATERIAL prefixed with 'Citation: '. Strip parenthetical citation markers.\n\n"
+        )
     
     reviews_text = ""
     for i, review in enumerate(member_reviews):
@@ -223,6 +316,48 @@ def build_chairman_synthesis_prompt(subject: str, chapter: str, theme: str, qTyp
         if review.get('alternative') and review['alternative'].lower() != 'none':
             reviews_text += f"Alternative Suggestion: {review['alternative']}\n"
     
+    if is_bloom_level_2(depth):
+        prompt = (
+        f"{lang_block}"
+        "### ROLE\n"
+        "You are the Chairman of an LLM Board. You have received feedback from board members on your initial proposal. "
+        "Your task is to synthesize the best possible final question(s) based on this collective input.\n\n"
+        "### CONTEXT\n"
+        f"- SUBJECT: {subject}\n"
+        f"- CHAPTER: {chapter}\n"
+        f"- THEME: {theme}\n"
+        f"- QUESTION TYPE: {qType}\n"
+        f"- TARGET DEPTH: {depth}\n"
+        f"{rag_context}"
+        f"{citation_instructions}"
+        "### YOUR ORIGINAL PROPOSAL\n"
+        f"{original_proposal}\n\n"
+        "### BOARD MEMBER REVIEWS\n"
+        f"{reviews_text}\n\n"
+        "### YOUR TASK\n"
+        "1. Consider all feedback from board members.\n"
+        "2. Synthesize the best possible question(s) that incorporates valid suggestions.\n"
+        "3. Ensure the final question(s) meet all requirements (depth, accuracy, format).\n"
+        "4. If multiple members suggested improvements, integrate the best elements.\n\n"
+        f"{lang_reminder}"
+        "### OUTPUT FORMAT (STRICT JSON ONLY)\n"
+        f"Return a JSON array with exactly {question_count} objects. Each object must contain question, answer, and rubric fields.\n"
+        "rubric must include answer, marks, and key_points. The marks entries must sum to 10.\n"
+        "Schema:\n"
+        "[\n"
+        "  {\n"
+        '    "question": "...",\n'
+        '    "answer": "...",\n'
+        '    "rubric": {\n'
+        '      "answer": "...",\n'
+        '      "marks": [{"criterion": "...", "marks": 2}],\n'
+        '      "key_points": ["...", "..."]\n'
+        "    }\n"
+        "  }\n"
+        "]"
+        )
+        return prompt
+
     prompt = (
         f"{lang_block}"
         "### ROLE\n"
@@ -236,6 +371,7 @@ def build_chairman_synthesis_prompt(subject: str, chapter: str, theme: str, qTyp
         f"- QUESTION TYPE: {qType}\n"
         f"- TARGET DEPTH: {depth}\n"
         f"{rag_context}"
+        f"{citation_instructions}"
         
         "### YOUR ORIGINAL PROPOSAL\n"
         f"{original_proposal}\n\n"
@@ -290,94 +426,88 @@ def parse_member_review(raw_output: str) -> Dict:
 async def run_council_flow(chairman_model_id: str, member_model_ids: List[str],
                           language: str,
                           subject: str, chapter: str, theme: str, qType: str,
-                          depth: str, num_questions: int) -> Dict:
+                          depth: str, num_questions: int,
+                          use_rag: bool = False,
+                          use_citation: bool = False,
+                          enable_dynamic_dropoff: bool = True,
+                          enable_graph_expansion: bool = False,
+                          temperature: float = 0.7) -> Dict:
     """
     Execute the three-stage council flow for question generation (Groq models only).
     Chairman proposes -> Members review -> Chairman synthesizes.
+    Uses unified MinimalRAGRetriever for RAG context.
     
     Returns:
         Dictionary with:
         - chairman_proposal: Original proposal text
         - member_opinions: List of member reviews
         - final_output: Raw synthesis/output
+        - source_chunks: Retrieved RAG context chunks
+        - source_meta: Metadata from first retrieved chunk
     """
-    # Check if any model needs RAG
-    needs_rag_context = needs_rag(chairman_model_id) or any(needs_rag(mid) for mid in member_model_ids)
-    
     language = (language or "en").lower()
     if language == "hi":
         print("[Council] Language=Hindi; prompts will enforce Hindi (Devanagari) output.")
-    topic_chunk = None
-    theme_chunk = None
+    
+    topic_chunk = ""
+    theme_chunk = ""
     topic_meta = []
     theme_meta = []
-    if needs_rag_context:
-        # RAG context retrieval might be blocking, run in executor
-        loop = asyncio.get_event_loop()
-        topic_chunk, theme_chunk, topic_meta, theme_meta = await loop.run_in_executor(
-            None,
-            lambda: get_rag_context(chapter, theme, language=language)
-        )
-    
-    context_chunks = (topic_chunk, theme_chunk) if topic_chunk and theme_chunk else None
     source_meta = None
-    if needs_rag_context and topic_meta and len(topic_meta) > 0 and topic_meta[0]:
-        source_meta = topic_meta[0]
-    elif needs_rag_context and theme_meta and len(theme_meta) > 0 and theme_meta[0]:
-        source_meta = theme_meta[0]
+    
+    if use_citation:
+        # Citation-based retrieval path: pick one verbatim citation per topic/theme
+        rag_store_dir = Path(os.getenv("RAG_STORE_DIR", str(Path(__file__).parent.parent / "rag_store_books"))).resolve()
+        try:
+            retriever = MinimalRAGRetriever(rag_store_dir)
+            topic_chunk, theme_chunk, topic_meta, theme_meta = retriever.retrieve_dual_citation(
+                topic_query=chapter,
+                theme_query=theme,
+                subject=subject,
+                chapter=chapter,
+                block=None,
+                language=language,
+            )
+            if topic_meta and len(topic_meta) > 0:
+                source_meta = topic_meta[0]
+            elif theme_meta and len(theme_meta) > 0:
+                source_meta = theme_meta[0]
+        except Exception as e:
+            print(f"[Council] Citation retrieval failed: {e}. Proceeding without RAG context.")
+    elif use_rag:
+        # Fetch RAG context using unified retriever
+        rag_store_dir = Path(os.getenv("RAG_STORE_DIR", str(Path(__file__).parent.parent / "rag_store_books"))).resolve()
+        try:
+            retriever = MinimalRAGRetriever(rag_store_dir)
+            loop = asyncio.get_event_loop()
+            topic_chunk, theme_chunk, topic_meta, theme_meta = await loop.run_in_executor(
+                None,
+                lambda: retriever.retrieve_dual(
+                    topic_query=chapter,
+                    theme_query=theme,
+                    subject=subject,
+                    chapter=chapter,
+                    block=None,
+                    language=language,
+                    k=5,
+                    enable_dynamic_dropoff=enable_dynamic_dropoff,
+                    enable_graph_expansion=enable_graph_expansion,
+                )
+            )
+            if topic_meta and len(topic_meta) > 0:
+                source_meta = topic_meta[0]
+            elif theme_meta and len(theme_meta) > 0:
+                source_meta = theme_meta[0]
+        except Exception as e:
+            print(f"[Council] RAG retrieval failed: {e}. Proceeding without RAG context.")
     
     # Stage 1: Chairman proposal
     chairman_prompt = build_chairman_proposal_prompt(
-        subject, chapter, theme, qType, depth, num_questions, language, topic_chunk, theme_chunk
+        subject, chapter, theme, qType, depth, num_questions, language, topic_chunk, theme_chunk,
+        use_citation=use_citation
     )
     
-    # Build RAG prompt for RAG models
-    if needs_rag(chairman_model_id) and context_chunks:
-        # For RAG models, we need to use the RAG-specific prompt format
-        _lang = (language or "en").lower()
-        _rag_lang = (
-            "### OUTPUT LANGUAGE (CRITICAL)\n"
-            "You MUST write all Questions and Answers in Hindi only (Devanagari script). Do not use English. Keep LaTeX as-is.\n\n"
-        ) if _lang == "hi" else (
-            "### OUTPUT LANGUAGE\n"
-            "Write all Questions and Answers in English.\n\n"
-        )
-        chairman_prompt = (
-            f"{_rag_lang}"
-            "### ROLE\n"
-            "Act as an expert NCERT Assessment Designer. Your task is to use the provided 'Source Material' "
-            "to generate high-quality questions. You must strictly adhere to the requested Cognitive Depth.\n\n"
-            
-            "### SOURCE MATERIAL (RAG CONTEXT)\n"
-            f"{topic_chunk}\n\n"
-            
-            "### COGNITIVE DEPTH FRAMEWORK (Bloom's x DOK)\n"
-            "If the source material is simple, you must still elevate the question to meet these levels:\n"
-            "- DOK 1 (Recall): Direct facts from the text. (e.g., 'What is...', 'Define...')\n"
-            "- DOK 2 (Understand/Apply): Interpreting the text. (e.g., 'How does X affect Y?', 'Classify...')\n"
-            "- DOK 3 (Analyze/Evaluate): Using the text to solve non-routine problems. (e.g., 'What would happen if...', 'Justify...')\n"
-            "- DOK 4 (Create/Synthesis): Connecting this text to broader scientific/mathematical principles.\n\n"
-            
-            "### SESSION PARAMETERS\n"
-            f"- SUBJECT: {subject}\n"
-            f"- CHAPTER: {chapter}\n"
-            f"- THEME: {theme}\n"
-            f"- QUESTION TYPE: {qType}\n"
-            f"- REQUIRED DEPTH: {depth}\n"
-            f"- QUANTITY: {num_questions}\n\n"
-            
-            "### INSTRUCTIONS\n"
-            "1. Use the Source Material for factual accuracy. Do not hallucinate outside NCERT bounds.\n"
-            "2. THE DEPTH IS PARAMOUNT: If the depth is DOK 3, do not provide a DOK 1 recall question even if the text is short.\n"
-            "3. Use LaTeX for all technical notation (e.g., $H_2O$, $\sin(\theta)$).\n\n"
-            
-            "### OUTPUT FORMAT (FOLLOW EXACTLY)\n"
-            "Strictly wrap each question and answer pair in these tags:\n"
-            "<Question> [Text + Options if MCQ] </Question>\n"
-            "<Answer> [Correct Answer + 1-sentence logic based on the Source Material] </Answer>"
-        )
-    
-    chairman_output = await run_model(chairman_model_id, chairman_prompt, context_chunks)
+    chairman_output = await run_model(chairman_model_id, chairman_prompt, req=None, temperature=temperature)
     
     # Stage 2: Member reviews (parallel execution)
     member_tasks = []
@@ -385,52 +515,10 @@ async def run_council_flow(chairman_model_id: str, member_model_ids: List[str],
         member_letter = chr(65 + i)  # A, B, C, etc.
         member_prompt = build_member_review_prompt(
             subject, chapter, theme, qType, depth, language, chairman_output, member_letter,
-            topic_chunk, theme_chunk
+            topic_chunk, theme_chunk,
+            use_citation=use_citation
         )
-        
-        # Build RAG prompt for RAG models
-        if needs_rag(member_id) and context_chunks:
-            topic_chunk, theme_chunk = context_chunks
-            _lang = (language or "en").lower()
-            _rag_lang = (
-                "### OUTPUT LANGUAGE (CRITICAL)\n"
-                "You MUST write your feedback and alternative in Hindi only (Devanagari script). Do not use English.\n\n"
-            ) if _lang == "hi" else (
-                "### OUTPUT LANGUAGE\n"
-                "Write your feedback and alternative in English.\n\n"
-            )
-            member_prompt = (
-                f"{_rag_lang}"
-                "### ROLE\n"
-                f"You are Board Member {member_letter} of an LLM Board. Your role is to critically review "
-                "the Chairman's proposed questions and provide constructive feedback.\n\n"
-                
-                "### SOURCE MATERIAL (RAG CONTEXT)\n"
-                f"{topic_chunk}\n\n"
-                
-                "### CONTEXT\n"
-                f"- SUBJECT: {subject}\n"
-                f"- CHAPTER: {chapter}\n"
-                f"- THEME: {theme}\n"
-                f"- QUESTION TYPE: {qType}\n"
-                f"- TARGET DEPTH: {depth}\n\n"
-                
-                "### CHAIRMAN'S PROPOSAL\n"
-                f"{chairman_output}\n\n"
-                
-                "### YOUR TASK\n"
-                "1. Evaluate the quality, accuracy, and appropriateness of the proposed question(s).\n"
-                "2. Rate the proposal on a scale of 1-10 (where 10 is excellent).\n"
-                "3. Provide specific feedback.\n"
-                "4. Optionally, suggest an alternative phrasing or improvement.\n\n"
-                
-                "### OUTPUT FORMAT\n"
-                "<Rating>X</Rating>\n"
-                "<Feedback>\n[Your detailed feedback here]\n</Feedback>\n"
-                "<Alternative>\n[Optional: Your improved version, or 'None']\n</Alternative>"
-            )
-        
-        member_tasks.append(run_model(member_id, member_prompt, context_chunks))
+        member_tasks.append(run_model(member_id, member_prompt, req=None, temperature=temperature))
     
     member_outputs = await asyncio.gather(*member_tasks)
     
@@ -444,63 +532,16 @@ async def run_council_flow(chairman_model_id: str, member_model_ids: List[str],
     # Stage 3: Chairman synthesis
     synthesis_prompt = build_chairman_synthesis_prompt(
         subject, chapter, theme, qType, depth, language, chairman_output, member_opinions,
-        topic_chunk, theme_chunk
+        topic_chunk, theme_chunk,
+        use_citation=use_citation
     )
     
-    # Build RAG prompt for RAG models
-    if needs_rag(chairman_model_id) and context_chunks:
-        topic_chunk, theme_chunk = context_chunks
-        _lang = (language or "en").lower()
-        _rag_lang = (
-            "### OUTPUT LANGUAGE (CRITICAL)\n"
-            "You MUST write all final Questions and Answers in Hindi only (Devanagari script). Do not use English.\n\n"
-        ) if _lang == "hi" else (
-            "### OUTPUT LANGUAGE\n"
-            "Write all final Questions and Answers in English.\n\n"
-        )
-        synthesis_prompt = (
-            f"{_rag_lang}"
-            "### ROLE\n"
-            "You are the Chairman of an LLM Board. Synthesize the best possible final question(s) based on board member feedback.\n\n"
-            
-            "### SOURCE MATERIAL (RAG CONTEXT)\n"
-            f"{topic_chunk}\n\n"
-            
-            "### CONTEXT\n"
-            f"- SUBJECT: {subject}\n"
-            f"- CHAPTER: {chapter}\n"
-            f"- THEME: {theme}\n"
-            f"- QUESTION TYPE: {qType}\n"
-            f"- TARGET DEPTH: {depth}\n\n"
-            
-            "### YOUR ORIGINAL PROPOSAL\n"
-            f"{chairman_output}\n\n"
-            
-            "### BOARD MEMBER REVIEWS\n"
-        )
-        for i, opinion in enumerate(member_opinions):
-            synthesis_prompt += (
-                f"\n### Board Member {chr(65 + i)} Review:\n"
-                f"Rating: {opinion.get('rating', 'N/A')}/10\n"
-                f"Feedback: {opinion.get('feedback', 'No feedback provided')}\n"
-            )
-            if opinion.get('alternative') and opinion['alternative'].lower() != 'none':
-                synthesis_prompt += f"Alternative Suggestion: {opinion['alternative']}\n"
-        
-        synthesis_prompt += (
-            "\n### YOUR TASK\n"
-            "Synthesize the best possible question(s) incorporating valid suggestions.\n\n"
-            
-            "### OUTPUT FORMAT (FOLLOW EXACTLY)\n"
-            "<Question> [Text + Options if MCQ] </Question>\n"
-            "<Answer> [Correct Answer + 1-sentence logic] </Answer>"
-        )
-    
-    final_output = await run_model(chairman_model_id, synthesis_prompt, context_chunks)
+    final_output = await run_model(chairman_model_id, synthesis_prompt, req=None, temperature=temperature)
     
     source_chunks = None
     if topic_chunk or theme_chunk:
         source_chunks = {"topic_chunk": topic_chunk or "", "theme_chunk": theme_chunk or ""}
+    
     return {
         "chairman_proposal": chairman_output,
         "member_opinions": member_opinions,

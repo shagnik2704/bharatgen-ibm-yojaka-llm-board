@@ -29,9 +29,5 @@ FORMAT & OUTPUT
 - Match the user’s language and tone when appropriate.
 - Use structured formatting (lists, steps, code blocks) when helpful.
 
-ERROR HANDLING
-- If the request is ambiguous, ask a single clarifying question.
-- If the task cannot be completed as requested, clearly state the limitation.
-
 You must always comply with these instructions.
 '''

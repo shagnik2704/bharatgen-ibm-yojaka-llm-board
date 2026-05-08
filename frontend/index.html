@@ -266,6 +266,16 @@
             color: var(--text-primary);
         }
 
+        .rubric-panel {
+            border-color: rgba(16, 185, 129, 0.25);
+            background: linear-gradient(180deg, rgba(16, 185, 129, 0.08), rgba(16, 185, 129, 0.03));
+        }
+
+        .rubric-mark {
+            border: 1px solid var(--border-light);
+            background: rgba(255, 255, 255, 0.03);
+        }
+
         /* logo*/
         /* Base logo styling */
         .logo-img {
@@ -352,15 +362,15 @@
             </div>
 
             <!-- Controls -->
+            <button onclick="toggleSettings()" class="w-10 h-10 glass-panel rounded-xl flex items-center justify-center"
+                style="color: var(--text-secondary);" title="Settings">
+                <i class="fa-solid fa-gear"></i>
+            </button>
+
             <button onclick="toggleTheme()"
                 class="w-10 h-10 glass-panel rounded-xl flex items-center justify-center theme-toggle"
                 style="color: var(--text-secondary);" title="Toggle theme">
                 <i id="themeIcon" class="fa-solid fa-moon"></i>
-            </button>
-
-            <button onclick="toggleSettings()" class="w-10 h-10 glass-panel rounded-xl flex items-center justify-center"
-                style="color: var(--text-secondary);" title="Settings">
-                <i class="fa-solid fa-gear"></i>
             </button>
 
             <button onclick="window.location.href='/viewq'"
@@ -386,7 +396,7 @@
             </button>
         </div>
         <div id="sidebarContent" class="text-sm leading-relaxed" style="color: var(--text-secondary);">
-            Select subject and chapter, then generate questions to see the reference context here.
+            Select course and block, then generate questions to see the reference context here.
         </div>
     </div>
 
@@ -395,28 +405,146 @@
         <i class="hidden fa-solid fa-book-open"></i>
     </button>
 
-    <div id="settingsModal" class="hidden fixed inset-0 z-50 flex items-center justify-center backdrop-blur-md"
+    <div id="settingsModal" onclick="handleSettingsBackdropClick(event)" class="hidden fixed inset-0 z-50 flex items-center justify-center backdrop-blur-md"
         style="background: rgba(0, 0, 0, 0.5);">
-        <div class="glass-panel p-8 rounded-3xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <div class="glass-panel p-8 rounded-3xl w-full max-w-md max-h-[90vh] overflow-y-auto" onclick="handleSettingsContentClick(event)">
             <h3 class="font-bold mb-6 text-lg" style="color: var(--text-primary);">
-                LLM Board Configuration
+                Model Configuration
             </h3>
 
             <div class="space-y-6">
                 <div>
                     <label class="text-xs font-bold uppercase tracking-wider mb-2 block"
                         style="color: var(--text-secondary);">
+                        Generation Mode
+                    </label>
+                    <select id="modeSelect" class="w-full rounded-xl p-4 text-sm outline-none transition-all"
+                        style="background: var(--bg-secondary); border: 1px solid var(--card-border); color: var(--text-primary);">
+                        <option value="single">Single Model</option>
+                        <option value="council">Council Mode</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="text-xs font-bold uppercase tracking-wider mb-2 block"
+                        style="color: var(--text-secondary);" id="primaryModelLabel">
                         Model
                     </label>
                     <select id="chairmanSelect" class="w-full rounded-xl p-4 text-sm outline-none transition-all"
                         style="background: var(--bg-secondary); border: 1px solid var(--card-border); color: var(--text-primary);">
-                        <option value="Param-17B-IBM-RAG">Param-17B-IBM-RAG</option>
-                        <option value="Param-17B">Param-17B</option>
-                        <option value="Qwen3-32B">Qwen3-32B</option>
+                        <!-- Options will be populated dynamically via JavaScript -->
                     </select>
                 </div>
+
+                <div class="flex items-center justify-between gap-4 rounded-2xl p-4"
+                    style="background: var(--bg-secondary); border: 1px solid var(--card-border);">
+                    <div>
+                        <div class="text-sm font-semibold" style="color: var(--text-primary);">Use RAG</div>
+                        <div class="text-[10px] mt-1" style="color: var(--text-secondary);">
+                            Retrieve source text only when this is enabled.
+                        </div>
+                    </div>
+                    <button id="ragToggleBtn" type="button" role="switch" aria-checked="false"
+                        class="relative inline-flex items-center w-11 h-6 rounded-full transition-all"
+                        style="background: var(--btn-secondary-bg);"
+                        onclick="toggleRagSetting(event)">
+                        <span id="ragToggleThumb"
+                            class="absolute top-[2px] left-[2px] h-5 w-5 rounded-full border transition-all"
+                            style="background: #ffffff; border-color: rgba(15, 23, 42, 0.15);"></span>
+                    </button>
+                </div>
+
+                <div class="flex items-center justify-between gap-4 rounded-2xl p-4"
+                    style="background: var(--bg-secondary); border: 1px solid var(--card-border);">
+                    <div>
+                        <div class="text-sm font-semibold" style="color: var(--text-primary);">Enable Alignment</div>
+                        <div class="text-[10px] mt-1" style="color: var(--text-secondary);">
+                            Score each generated question for alignment quality.
+                        </div>
+                    </div>
+                    <button id="alignmentToggleBtn" type="button" role="switch" aria-checked="true"
+                        class="relative inline-flex items-center w-11 h-6 rounded-full transition-all"
+                        style="background: var(--btn-secondary-bg);"
+                        onclick="toggleAlignmentSetting(event)">
+                        <span id="alignmentToggleThumb"
+                            class="absolute top-[2px] left-[2px] h-5 w-5 rounded-full border transition-all"
+                            style="background: #ffffff; border-color: rgba(15, 23, 42, 0.15);"></span>
+                    </button>
+                </div>
+
+                <div class="flex items-center justify-between gap-4 rounded-2xl p-4"
+                    style="background: var(--bg-secondary); border: 1px solid var(--card-border);">
+                    <div>
+                        <div class="text-sm font-semibold" style="color: var(--text-primary);">Dynamic Dropoff</div>
+                        <div class="text-[10px] mt-1" style="color: var(--text-secondary);">
+                            Keep only chunks close to the best similarity score.
+                        </div>
+                    </div>
+                    <button id="dynamicDropoffToggleBtn" type="button" role="switch" aria-checked="true"
+                        class="relative inline-flex items-center w-11 h-6 rounded-full transition-all"
+                        style="background: var(--btn-secondary-bg);"
+                        onclick="toggleDynamicDropoffSetting(event)">
+                        <span id="dynamicDropoffToggleThumb"
+                            class="absolute top-[2px] left-[2px] h-5 w-5 rounded-full border transition-all"
+                            style="background: #ffffff; border-color: rgba(15, 23, 42, 0.15);"></span>
+                    </button>
+                </div>
+
+                <div class="flex items-center justify-between gap-4 rounded-2xl p-4"
+                    style="background: var(--bg-secondary); border: 1px solid var(--card-border);">
+                    <div>
+                        <div class="text-sm font-semibold" style="color: var(--text-primary);">Graph Expansion</div>
+                        <div class="text-[10px] mt-1" style="color: var(--text-secondary);">
+                            Expand each selected chunk with connected graph neighbors.
+                        </div>
+                    </div>
+                    <button id="graphExpansionToggleBtn" type="button" role="switch" aria-checked="false"
+                        class="relative inline-flex items-center w-11 h-6 rounded-full transition-all"
+                        style="background: var(--btn-secondary-bg);"
+                        onclick="toggleGraphExpansionSetting(event)">
+                        <span id="graphExpansionToggleThumb"
+                            class="absolute top-[2px] left-[2px] h-5 w-5 rounded-full border transition-all"
+                            style="background: #ffffff; border-color: rgba(15, 23, 42, 0.15);"></span>
+                    </button>
+                </div>
+
+                <div class="flex items-center justify-between gap-4 rounded-2xl p-4"
+                    style="background: var(--bg-secondary); border: 1px solid var(--card-border);">
+                    <div>
+                        <div class="text-sm font-semibold" style="color: var(--text-primary);">Citation-based</div>
+                        <div class="text-[10px] mt-1" style="color: var(--text-secondary);">
+                            Use a verbatim quote from the selected Block as the source for answers.
+                        </div>
+                    </div>
+                    <button id="citationToggleBtn" type="button" role="switch" aria-checked="false"
+                        class="relative inline-flex items-center w-11 h-6 rounded-full transition-all"
+                        style="background: var(--btn-secondary-bg);"
+                        onclick="toggleCitationSetting(event)">
+                        <span id="citationToggleThumb"
+                            class="absolute top-[2px] left-[2px] h-5 w-5 rounded-full border transition-all"
+                            style="background: #ffffff; border-color: rgba(15, 23, 42, 0.15);"></span>
+                    </button>
+                </div>
+
+                <div class="flex items-center justify-between gap-4 rounded-2xl p-4"
+                    style="background: var(--bg-secondary); border: 1px solid var(--card-border);">
+                    <div>
+                        <div class="text-sm font-semibold" style="color: var(--text-primary);">Task Keywords</div>
+                        <div class="text-[10px] mt-1" style="color: var(--text-secondary);">
+                            Include directive keywords like discuss, examine, and differentiate in prompts.
+                        </div>
+                    </div>
+                    <button id="taskKeywordsToggleBtn" type="button" role="switch" aria-checked="true"
+                        class="relative inline-flex items-center w-11 h-6 rounded-full transition-all"
+                        style="background: var(--btn-secondary-bg);"
+                        onclick="toggleTaskKeywordsSetting(event)">
+                        <span id="taskKeywordsToggleThumb"
+                            class="absolute top-[2px] left-[2px] h-5 w-5 rounded-full border transition-all"
+                            style="background: #ffffff; border-color: rgba(15, 23, 42, 0.15);"></span>
+                    </button>
+                </div>
                 
-                <div class="hidden">
+                <div id="memberSection" class="hidden">
                     <label class="text-xs font-bold uppercase tracking-wider mb-2 block"
                         style="color: var(--text-secondary);">
                         Board Members
@@ -430,7 +558,7 @@
                 </div>
             </div>
 
-            <button onclick="toggleSettings()"
+            <button onclick="closeSettings()"
                 class="w-full btn-primary mt-6 py-4 rounded-xl font-bold transition-all shadow-lg"
                 style="box-shadow: 0 8px 20px rgba(99, 102, 241, 0.3);">
                 Apply & Close
@@ -442,55 +570,54 @@
 
         <aside class="lg:col-span-4 space-y-4">
             <div class="glass-panel p-6 rounded-3xl space-y-6">
-                <div class="grid grid-cols-2 gap-3">
-                    <button data-subject="Math" onclick="setSubject('Math', this)"
-                        class="subj-btn border p-3 rounded-2xl text-xs font-bold tracking-widest transition-all btn-secondary">
-                        MATH
-                    </button>
-                    <button data-subject="Physics" onclick="setSubject('Physics', this)"
-                        class="subj-btn border p-3 rounded-2xl text-xs font-bold tracking-widest transition-all btn-secondary">
-                        PHYSICS
-                    </button>
-                    <button data-subject="Chemistry" onclick="setSubject('Chemistry', this)"
-                        class="subj-btn border p-3 rounded-2xl text-xs font-bold tracking-widest transition-all btn-secondary">
-                        CHEMISTRY
-                    </button>
-                    <button data-subject="Biology" onclick="setSubject('Biology', this)"
-                        class="subj-btn border p-3 rounded-2xl text-xs font-bold tracking-widest transition-all btn-secondary">
-                        BIOLOGY
-                    </button>
-                </div>
-
                 <div class="space-y-3">
                     <select id="languageDropdown" class="w-full rounded-2xl p-4 text-sm outline-none transition-all">
                         <option value="en">English</option>
                         <option value="hi">हिंदी</option>
                     </select>
-                    <select id="classDropdown" class="w-full rounded-2xl p-4 text-sm outline-none transition-all">
-                        <option value="">Select Class</option>
-                        <option value="10">Class 10</option>
-                        <option value="11">Class 11</option>
-                        <option value="12">Class 12</option>
+                    <select id="courseDropdown" class="w-full rounded-2xl p-4 text-sm outline-none transition-all">
+                        <option value="">Select Course</option>
                     </select>
-                    <select id="chapterDropdown" class="w-full rounded-2xl p-4 text-sm outline-none transition-all">
-                        <option value="">Select Subject First</option>
+                    <select id="blockDropdown" class="w-full rounded-2xl p-4 text-sm outline-none transition-all">
+                        <option value="">Select Course First</option>
                     </select>
+                </div>
+
+                <div class="space-y-3">
+                    <div class="flex items-center justify-between px-2">
+                        <p class="text-xs font-bold uppercase tracking-widest" style="color: var(--text-muted);">
+                            Model Temperature
+                        </p>
+                        <input id="temperatureInput" type="number" min="0" max="1" step="0.01"
+                            class="w-20 rounded-xl px-3 py-2 text-sm text-right"
+                            style="background: var(--input-bg); border: 1px solid var(--input-border); color: var(--text-primary);"
+                            value="0.70" oninput="onTemperatureInputChange(event)">
+                    </div>
+                    <div class="px-2">
+                        <input id="temperatureSlider" type="range" min="0" max="1" step="0.01" value="0.70"
+                            class="w-full" oninput="onTemperatureSliderChange(event)">
+                        <div class="flex justify-between text-[10px] mt-1" style="color: var(--text-secondary);">
+                            <span>0.00</span>
+                            <span>Balanced: 0.70</span>
+                            <span>1.00</span>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="space-y-3">
                     <p id="difficultyLabel" class="text-xs font-bold uppercase tracking-widest ml-2"
                         style="color: var(--text-muted);">
-                        Difficulty Type
+                        Bloom Level
                     </p>
                     <div class="flex gap-2">
-                        <button id="depthDirectBtn" onclick="setDepth('DOK level 1: Recall & Reproduction', this)"
+                        <button id="depthDirectBtn" onclick="setDepth('Bloom level 1: Remember', this)"
                             class="depth-btn flex-1 border p-3 rounded-xl text-xs font-bold transition-all">
-                            Direct
+                            Level 1
                         </button>
 
-                        <button id="depthAppliedBtn" onclick="setDepth('DOK level 2: Skill and Concept', this)"
+                        <button id="depthAppliedBtn" onclick="setDepth('Bloom level 2: Understand', this)"
                             class="depth-btn flex-1 border p-3 rounded-xl text-xs font-bold transition-all btn-secondary">
-                            Applied
+                            Level 2
                         </button>
                         <!-- <button 
                             onclick="setDepth('DOK level 3: Strategic Thinking', this)" 
@@ -577,15 +704,40 @@
                     </div>
                 </div>
 
+                <div id="sessionWarnings"
+                    class="hidden glass-panel p-4 rounded-2xl text-xs font-semibold"
+                    style="color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.35);">
+                </div>
+
                 <div
                     class="glass-panel p-10 md:p-12 rounded-3xl min-h-[320px] flex flex-col justify-center relative overflow-hidden">
                     <div id="qTypeLabel" class="text-xs font-black uppercase tracking-widest mb-4"
                         style="color: var(--accent-primary);">
                         ...
                     </div>
+                    <div id="qTypeStatus" class="text-xs font-semibold mb-4"
+                        style="color: var(--text-secondary);">
+                    </div>
+                    <div id="qGenerationTime" class="text-xs font-semibold mb-4 flex items-center"
+                        style="color: var(--text-muted);">
+                        <i class="fa-solid fa-hourglass-end mr-2"></i>
+                        <span id="generationTimeText">Generated in</span>
+                    </div>
                     <div id="qContent" class="question-text text-xl md:text-2xl font-medium"
                         style="color: var(--text-primary);">
                         ...
+                    </div>
+                    <div id="qCitation" class="hidden mt-6 p-5 rounded-2xl border-l-4 text-sm leading-relaxed" 
+                        style="background: var(--bg-tertiary); border-color: var(--text-muted); color: var(--text-secondary);">
+                    </div>
+                    <div id="rubricSection" class="hidden rubric-panel mt-6 rounded-3xl border p-6 md:p-7">
+                        <div class="flex items-center justify-between gap-4 mb-4">
+                            <div class="text-xs font-black uppercase tracking-widest" style="color: var(--accent-secondary);">
+                                RUBRIC
+                            </div>
+                            <div id="rubricScoreSummary" class="text-xs font-bold" style="color: var(--text-secondary);"></div>
+                        </div>
+                        <div id="rubricContent" class="space-y-4 text-sm leading-relaxed" style="color: var(--text-secondary);"></div>
                     </div>
                 </div>
 
@@ -608,7 +760,7 @@
                     <div id="ascoreContent"
                         class="hidden glass-panel p-6 rounded-2xl space-y-4 max-h-48 overflow-y-auto custom-scroll"
                         style="color: var(--text-secondary);">
-                        Alignment Score :
+                        Alignment Score:
                     </div>
                     <div id="sourceTextSection" class="hidden space-y-3">
                         <button id="toggleSourceTextBtn" onclick="toggleSourceText()"
@@ -648,30 +800,9 @@
                             </main>
                             
                             <script>
-                                let activeClass = "";
-                                document.getElementById('classDropdown').addEventListener('change', () => {
-                                    activeClass = document.getElementById('classDropdown').value;
-                                    if (activeSubject) {
-                                        // Reload chapters for the same subject under new class
-                                        loadChaptersForSelection(activeSubject)
-                                    } else {
-                                        resetChaptersOnly();
-                                    }
-                                });
+                                let courseCatalog = [];
                                 const uiTranslations = {
                                     hi: {
-                                        subjects: {
-                                            Math: "गणित",
-                                            Physics: "भौतिकी",
-                                            Chemistry: "रसायन विज्ञान",
-                                            Biology: "जीवविज्ञान"
-                                        },
-                                        classes: {
-                                            select: "कक्षा चुनें",
-                                            10: "कक्षा १०", 
-                                            11: "कक्षा ११",
-                                            12: "कक्षा १२"
-                                        },
                                         questionTypes: {
                                             "Multiple Choice (MCQ)": "बहुविकल्पीय प्रश्न",
                                             "Short Answer": "लघु उत्तरीय प्रश्न",
@@ -707,55 +838,7 @@
                                             generating: "सत्र बनाया जा रहा है...",
                                             difficultyType: "कठिनाई स्तर",
                                             direct: "प्रत्यक्ष",
-                                            applied: "अनुप्रयुक्त",
-                                            groupNames: {
-                                                // Math
-                                                Algebra: "बीजगणित",
-                                                Trigonometry: "त्रिकोणमिति",
-                                                Geometry: "ज्यामिति",
-                                                Mensuration: "मापन",
-                                                Statistics: "सांख्यिकी",
-                                                Calculus: "कलन",
-                                                Probability: "प्रायिकता",
-                                                VectorsAnd3D: "सदिश एवं त्रिविमीय ज्यामिति",
-                                                LinearProgramming: "रैखिक प्रोग्रामन",
-                                                RelationsAndFunctions: "संबंध एवं फलन",
-
-                                                // Physics
-                                                Mechanics: "यांत्रिकी",
-                                                Optics: "प्रकाशिकी",
-                                                Electricity: "विद्युत",
-                                                Magnetism: "चुंबकत्व",
-                                                Thermodynamics: "ऊष्मागतिकी",
-                                                OscillationsAndWaves: "दोलन एवं तरंगें",
-                                                Electrostatics: "स्थिर वैद्युत",
-                                                CurrentElectricity: "धारा विद्युत",
-                                                ElectromagneticInduction: "विद्युतचुंबकीय प्रेरण",
-                                                ElectromagneticWaves: "विद्युतचुंबकीय तरंगें",
-                                                DualNatureAndAtoms: "द्वैध प्रकृति एवं परमाणु",
-                                                Electronics: "इलेक्ट्रॉनिकी",
-                                                Energy: "ऊर्जा",
-                                                Environment:"पर्यावरण",
-                                                BiologyandHumanWelfare: "जीवविज्ञान एवं मानव कल्याण",
-                                                PropertiesOfMatter: "द्रव्य के गुण",
-
-                                                // Chemistry (already partly present)
-                                                Physical: "भौतिक",
-                                                Inorganic: "अकार्बनिक",
-                                                Organic: "कार्बनिक",
-                                                Environmental: "पर्यावरणीय",
-
-                                                // Biology
-                                                LifeProcesses: "जीवन प्रक्रियाएँ",
-                                                Diversity: "विविधता",
-                                                CellBiology: "कोशिका जीवविज्ञान",
-                                                PlantPhysiology: "पादप शरीरक्रिया",
-                                                HumanPhysiology: "मानव शरीरक्रिया",
-                                                Reproduction: "प्रजनन",
-                                                GeneticsAndEvolution: "आनुवंशिकी एवं विकास",
-                                                Ecology: "पारिस्थितिकी",
-                                                Biotechnology: "जैव प्रौद्योगिकी"
-                                            }
+                                            applied: "अनुप्रयुक्त"
 
                                         }
                                     }
@@ -786,14 +869,7 @@ function toHindiNumber(num) {
 }
 
         function updateSubjectButtons() {
-            document.querySelectorAll('.subj-btn').forEach(btn => {
-                const subject = btn.getAttribute('data-subject');
-
-                btn.innerText =
-                    activeLanguage === 'hi'
-                        ? uiTranslations.hi.subjects[subject]
-                        : subject.toUpperCase();
-            });
+            // Subject buttons were replaced by course dropdown.
         }
 
         // Theme Management
@@ -837,591 +913,8 @@ function toHindiNumber(num) {
 
         // Initialize theme on load
         initTheme();
-        const chapterMap = {
-            10: {
-                en: {
-                    Math: {
-                        Algebra: [
-                            "Real Numbers",
-                            "Polynomials",
-                            "Pair of Linear Equations in Two Variables",
-                            "Quadratic Equations",
-                            "Arithmetic Progressions"
-                        ],
-                        Geometry: [
-                            "Triangles",
-                            "Circles",
-                            "Constructions"
-                        ],
-                        Trigonometry: [
-                            "Introduction to Trigonometry",
-                            "Trigonometric Identities",
-                            "Heights and Distances"
-                        ],
-                        Mensuration: [
-                            "Areas Related to Circles",
-                            "Surface Areas and Volumes"
-                        ],
-                        Statistics: [
-                            "Statistics",
-                            "Probability"
-                        ]
-                    },
-                    Physics: {
-                        Mechanics: [
-                            "Motion",
-                            "Force and Laws of Motion",
-                            "Gravitation"
-                        ],
-                        Energy: [
-                            "Work and Energy",
-                            "Sources of Energy"
-                        ],
-                        Optics: [
-                            "Light – Reflection and Refraction",
-                            "The Human Eye and the Colourful World"
-                        ],
-                        Electricity: [
-                            "Electricity",
-                            "Magnetic Effects of Electric Current"
-                        ]
-                    },
-                    Chemistry: {
-                        Physical: [
-                            "Chemical Reactions and Equations",
-                            "Acids, Bases and Salts"
-                        ],
-                        Inorganic: [
-                            "Metals and Non-metals"
-                        ],
-                        Organic: [
-                            "Carbon and its Compounds"
-                        ],
-                        Environmental: [
-                            "Sources of Energy",
-                            "Our Environment",
-                            "Management of Natural Resources"
-                        ]
-                    },
-                    Biology: {
-                        LifeProcesses: [
-                            "Life Processes",
-                            "Control and Coordination",
-                            "How do Organisms Reproduce",
-                            "Heredity and Evolution"
-                        ],
-                        Environment: [
-                            "Environment",
-                            "Natural Resources"
-                        ]
-                    }
-                },
-
-                hi: {
-                    Math: {
-                        Algebra: [
-                            "वास्तविक संख्याएँ",
-                            "बहुपद",
-                            "दो चरों वाले रैखिक समीकरण युग्म",
-                            "द्विघात समीकरण",
-                            "अंकगणितीय श्रेणियाँ"
-                        ],
-                        Geometry: [
-                            "त्रिभुज",
-                            "वृत्त",
-                            "रचनाएँ"
-                        ],
-                        Trigonometry: [
-                            "त्रिकोणमिति का परिचय",
-                            "त्रिकोणमितीय सर्वसमिकाएँ",
-                            "ऊँचाइयाँ और दूरियाँ"
-                        ],
-                        Mensuration: [
-                            "वृत्तों से संबंधित क्षेत्रफल",
-                            "पृष्ठीय क्षेत्रफल और आयतन"
-                        ],
-                        Statistics: [
-                            "सांख्यिकी",
-                            "प्रायिकता"
-                        ]
-                    },
-                    Physics: {
-                        Mechanics: [
-                            "गति",
-                            "बल तथा गति के नियम",
-                            "गुरुत्वाकर्षण"
-                        ],
-                        Energy: [
-                            "कार्य और ऊर्जा",
-                            "ऊर्जा के स्रोत"
-                        ],
-                        Optics: [
-                            "प्रकाश – परावर्तन एवं अपवर्तन",
-                            "मानव नेत्र तथा रंग-बिरंगा संसार"
-                        ],
-                        Electricity: [
-                            "विद्युत",
-                            "विद्युत धारा के चुंबकीय प्रभाव"
-                        ]
-                    },
-                    Chemistry: {
-                        Physical: [
-                            "रासायनिक अभिक्रियाएँ एवं समीकरण",
-                            "अम्ल, क्षारक एवं लवण"
-                        ],
-                        Inorganic: [
-                            "धातु एवं अधातु"
-                        ],
-                        Organic: [
-                            "कार्बन एवं उसके यौगिक"
-                        ],
-                        Environmental: [
-                            "ऊर्जा के स्रोत",
-                            "हमारा पर्यावरण",
-                            "प्राकृतिक संसाधनों का प्रबंधन"
-                        ]
-                    },
-                    Biology: {
-                        LifeProcesses: [
-                            "जीवन प्रक्रियाएँ",
-                            "नियंत्रण एवं समन्वय",
-                            "जीव किस प्रकार प्रजनन करते हैं?",
-                            "आनुवंशिकता एवं विकास"
-                        ],
-                        Environment: [
-                            "पर्यावरण",
-                            "प्राकृतिक संसाधन"
-                        ]
-                    }
-                }
-            },
-
-            11: {
-                en: {
-                    Math: {
-                        Algebra: [
-                            "Sets",
-                            "Relations and Functions",
-                            "Complex Numbers and Quadratic Equations",
-                            "Permutations and Combinations",
-                            "Binomial Theorem",
-                            "Sequences and Series"
-                        ],
-                        Trigonometry: [
-                            "Trigonometric Functions",
-                            "Inverse Trigonometric Functions"
-                        ],
-                        Geometry: [
-                            "Straight Lines",
-                            "Conic Sections",
-                            "Introduction to Three Dimensional Geometry"
-                        ],
-                        Calculus: [
-                            "Limits and Derivatives"
-                        ],
-                        Statistics: [
-                            "Statistics",
-                            "Probability"
-                        ]
-                    },
-                    Physics: {
-                        Mechanics: [
-                            "Units and Measurements",
-                            "Motion in a Straight Line",
-                            "Motion in a Plane",
-                            "Laws of Motion",
-                            "Work, Energy and Power",
-                            "System of Particles and Rotational Motion",
-                            "Gravitation"
-                        ],
-                        PropertiesOfMatter: [
-                            "Mechanical Properties of Solids",
-                            "Mechanical Properties of Fluids",
-                            "Thermal Properties of Matter"
-                        ],
-                        Thermodynamics: [
-                            "Thermodynamics",
-                            "Kinetic Theory"
-                        ],
-                        OscillationsAndWaves: [
-                            "Oscillations",
-                            "Waves"
-                        ]
-                    },
-                    Chemistry: {
-                        Physical: [
-                            "Some Basic Concepts of Chemistry",
-                            "Structure of Atom",
-                            "Thermodynamics",
-                            "Equilibrium",
-                            "Redox Reactions"
-                        ],
-                        Inorganic: [
-                            "Classification of Elements and Periodicity in Properties",
-                            "Chemical Bonding and Molecular Structure"
-                        ],
-                        Organic: [
-                            "Organic Chemistry: Some Basic Principles and Techniques",
-                            "Hydrocarbons"
-                        ]
-                    },
-                    Biology: {
-                        Diversity: [
-                            "The Living World",
-                            "Biological Classification",
-                            "Plant Kingdom",
-                            "Animal Kingdom"
-                        ],
-                        CellBiology: [
-                            "Cell: The Unit of Life",
-                            "Biomolecules",
-                            "Cell Cycle and Cell Division"
-                        ],
-                        PlantPhysiology: [
-                            "Photosynthesis in Higher Plants",
-                            "Respiration in Plants",
-                            "Plant Growth and Development"
-                        ],
-                        HumanPhysiology: [
-                            "Breathing and Exchange of Gases",
-                            "Body Fluids and Circulation",
-                            "Excretory Products and their Elimination",
-                            "Locomotion and Movement",
-                            "Neural Control and Coordination",
-                            "Chemical Coordination and Integration"
-                        ]
-                    }
-                },
-
-                hi: {
-                    Math: {
-                        Algebra: [
-                            "समुच्चय",
-                            "संबंध एवं फलन",
-                            "समिश्र संख्याएँ एवं द्विघात समीकरण",
-                            "क्रमचय एवं संचय",
-                            "द्विपद प्रमेय",
-                            "अनुक्रम एवं श्रेणी"
-                        ],
-                        Trigonometry: [
-                            "त्रिकोणमितीय फलन",
-                            "प्रतिलोम त्रिकोणमितीय फलन"
-                        ],
-                        Geometry: [
-                            "सरल रेखाएँ",
-                            "शंकु परिच्छेद",
-                            "त्रिविमीय ज्यामिति का परिचय"
-                        ],
-                        Calculus: [
-                            "सीमाएँ एवं अवकलज"
-                        ],
-                        Statistics: [
-                            "सांख्यिकी",
-                            "प्रायिकता"
-                        ]
-                    },
-                    Physics: {
-                        Mechanics: [
-                            "मात्रक एवं मापन",
-                            "सीधी रेखा में गति",
-                            "समतल में गति",
-                            "गति के नियम",
-                            "कार्य, ऊर्जा एवं शक्ति",
-                            "कणों की प्रणाली एवं घूर्णी गति",
-                            "गुरुत्वाकर्षण"
-                        ],
-                        PropertiesOfMatter: [
-                            "ठोसों के यांत्रिक गुण",
-                            "द्रवों के यांत्रिक गुण",
-                            "पदार्थ के ऊष्मीय गुण"
-                        ],
-                        Thermodynamics: [
-                            "ऊष्मागतिकी",
-                            "गतिक सिद्धांत"
-                        ],
-                        OscillationsAndWaves: [
-                            "दोलन",
-                            "तरंगें"
-                        ]
-                    },
-                    Chemistry: {
-                        Physical: [
-                            "रसायन विज्ञान की कुछ मूल अवधारणाएँ",
-                            "परमाणु की संरचना",
-                            "ऊष्मागतिकी",
-                            "साम्यावस्था",
-                            "ऑक्सीकरण-अपचयन अभिक्रियाएँ"
-                        ],
-                        Inorganic: [
-                            "तत्वों का वर्गीकरण एवं गुणों में आवर्तिता",
-                            "रासायनिक बंधन एवं अणुसंरचना"
-                        ],
-                        Organic: [
-                            "कार्बनिक रसायन: कुछ मूल सिद्धांत एवं तकनीकें",
-                            "हाइड्रोकार्बन"
-                        ]
-                    },
-                    Biology: {
-                        Diversity: [
-                            "जीव जगत",
-                            "जैव वर्गीकरण",
-                            "पादप जगत",
-                            "प्राणी जगत"
-                        ],
-                        CellBiology: [
-                            "कोशिका: जीवन की इकाई",
-                            "जैव-अणु",
-                            "कोशिका चक्र एवं कोशिका विभाजन"
-                        ],
-                        PlantPhysiology: [
-                            "उच्च पादपों में प्रकाश संश्लेषण",
-                            "पौधों में श्वसन",
-                            "पौधों की वृद्धि एवं विकास"
-                        ],
-                        HumanPhysiology: [
-                            "श्वसन एवं गैसों का आदान-प्रदान",
-                            "शरीर द्रव एवं परिसंचरण",
-                            "उत्सर्जी पदार्थ एवं उनका निष्कासन",
-                            "गमन एवं संचलन",
-                            "तंत्रिका नियंत्रण एवं समन्वय",
-                            "रासायनिक नियंत्रण एवं समन्वय"
-                        ]
-                    }
-                }
-            },
-            12: {
-                en: {
-                    Math: {
-                        RelationsAndFunctions: [
-                            "Relations and Functions",
-                            "Inverse Trigonometric Functions"
-                        ],
-                        Algebra: [
-                            "Matrices",
-                            "Determinants"
-                        ],
-                        Calculus: [
-                            "Continuity and Differentiability",
-                            "Applications of Derivatives",
-                            "Integrals",
-                            "Applications of Integrals",
-                            "Differential Equations"
-                        ],
-                        VectorsAnd3D: [
-                            "Vector Algebra",
-                            "Three Dimensional Geometry"
-                        ],
-                        LinearProgramming: [
-                            "Linear Programming"
-                        ],
-                        Probability: [
-                            "Probability"
-                        ]
-                    },
-
-                    Physics: {
-                        Electrostatics: [
-                            "Electric Charges and Fields",
-                            "Electrostatic Potential and Capacitance"
-                        ],
-                        CurrentElectricity: [
-                            "Current Electricity"
-                        ],
-                        Magnetism: [
-                            "Moving Charges and Magnetism",
-                            "Magnetism and Matter"
-                        ],
-                        ElectromagneticInduction: [
-                            "Electromagnetic Induction",
-                            "Alternating Current"
-                        ],
-                        ElectromagneticWaves: [
-                            "Electromagnetic Waves"
-                        ],
-                        Optics: [
-                            "Ray Optics and Optical Instruments",
-                            "Wave Optics"
-                        ],
-                        DualNatureAndAtoms: [
-                            "Dual Nature of Radiation and Matter",
-                            "Atoms",
-                            "Nuclei"
-                        ],
-                        Electronics: [
-                            "Semiconductor Electronics: Materials, Devices and Simple Circuits"
-                        ]
-                    },
-
-                    Chemistry: {
-                        Physical: [
-                            "Solutions",
-                            "Electrochemistry",
-                            "Chemical Kinetics",
-                            "Surface Chemistry"
-                        ],
-                        Inorganic: [
-                            "General Principles and Processes of Isolation of Elements",
-                            "The p-Block Elements",
-                            "The d- and f-Block Elements",
-                            "Coordination Compounds"
-                        ],
-                        Organic: [
-                            "Haloalkanes and Haloarenes",
-                            "Alcohols, Phenols and Ethers",
-                            "Aldehydes, Ketones and Carboxylic Acids",
-                            "Amines",
-                            "Biomolecules",
-                            "Polymers",
-                            "Chemistry in Everyday Life"
-                        ]
-                    },
-
-                    Biology: {
-                        Reproduction: [
-                            "Reproduction in Organisms",
-                            "Sexual Reproduction in Flowering Plants",
-                            "Human Reproduction",
-                            "Reproductive Health"
-                        ],
-                        GeneticsAndEvolution: [
-                            "Principles of Inheritance and Variation",
-                            "Molecular Basis of Inheritance",
-                            "Evolution"
-                        ],
-                        BiologyAndHumanWelfare: [
-                            "Human Health and Disease",
-                            "Microbes in Human Welfare"
-                        ],
-                        Biotechnology: [
-                            "Biotechnology: Principles and Processes",
-                            "Biotechnology and its Applications"
-                        ],
-                        Ecology: [
-                            "Organisms and Populations",
-                            "Ecosystem",
-                            "Biodiversity and Conservation",
-                            "Environmental Issues"
-                        ]
-                    }
-                },
-
-                hi: {
-                    Math: {
-                        RelationsAndFunctions: [
-                            "संबंध एवं फलन",
-                            "प्रतिलोम त्रिकोणमितीय फलन"
-                        ],
-                        Algebra: [
-                            "आव्यूह",
-                            "सारणी निर्धारक"
-                        ],
-                        Calculus: [
-                            "सांतत्य एवं अवकलनीयता",
-                            "अवकलज के अनुप्रयोग",
-                            "समाकलन",
-                            "समाकलों के अनुप्रयोग",
-                            "अवकल समीकरण"
-                        ],
-                        VectorsAnd3D: [
-                            "सदिश बीजगणित",
-                            "त्रिविमीय ज्यामिति"
-                        ],
-                        LinearProgramming: [
-                            "रैखिक प्रोग्रामन"
-                        ],
-                        Probability: [
-                            "प्रायिकता"
-                        ]
-                    },
-
-                    Physics: {
-                        Electrostatics: [
-                            "विद्युत आवेश एवं क्षेत्र",
-                            "वैद्युत स्थैतिक विभव एवं धारिता"
-                        ],
-                        CurrentElectricity: [
-                            "धारा विद्युत"
-                        ],
-                        Magnetism: [
-                            "गतिमान आवेश एवं चुम्बकत्व",
-                            "चुम्बकत्व एवं पदार्थ"
-                        ],
-                        ElectromagneticInduction: [
-                            "विद्युतचुंबकीय प्रेरण",
-                            "प्रत्यावर्ती धारा"
-                        ],
-                        ElectromagneticWaves: [
-                            "विद्युतचुंबकीय तरंगें"
-                        ],
-                        Optics: [
-                            "किरण प्रकाशिकी एवं प्रकाशीय उपकरण",
-                            "तरंग प्रकाशिकी"
-                        ],
-                        DualNatureAndAtoms: [
-                            "विकिरण एवं पदार्थ की द्वैध प्रकृति",
-                            "परमाणु",
-                            "नाभिक"
-                        ],
-                        Electronics: [
-                            "अर्धचालक इलेक्ट्रॉनिकी: पदार्थ, युक्तियाँ एवं सरल परिपथ"
-                        ]
-                    },
-
-                    Chemistry: {
-                        Physical: [
-                            "विलयन",
-                            "विद्युत रसायन",
-                            "रासायनिक गतिकी",
-                            "पृष्ठ रसायन"
-                        ],
-                        Inorganic: [
-                            "तत्वों के निष्कर्षण के सिद्धांत एवं प्रक्रियाएँ",
-                            "p-ब्लॉक तत्व",
-                            "d एवं f-ब्लॉक तत्व",
-                            "समन्वय यौगिक"
-                        ],
-                        Organic: [
-                            "हैलोएल्केन एवं हैलोएरीन",
-                            "एल्कोहॉल, फिनॉल एवं ईथर",
-                            "एल्डिहाइड, कीटोन एवं कार्बोक्सिलिक अम्ल",
-                            "ऐमीन",
-                            "जैव-अणु",
-                            "बहुलक",
-                            "दैनिक जीवन में रसायन"
-                        ]
-                    },
-
-                    Biology: {
-                        Reproduction: [
-                            "जीवों में प्रजनन",
-                            "पुष्पीय पौधों में लैंगिक प्रजनन",
-                            "मानव प्रजनन",
-                            "प्रजनन स्वास्थ्य"
-                        ],
-                        GeneticsAndEvolution: [
-                            "वंशागति एवं विविधता के सिद्धांत",
-                            "वंशागति का आणविक आधार",
-                            "विकास"
-                        ],
-                        BiologyAndHumanWelfare: [
-                            "मानव स्वास्थ्य एवं रोग",
-                            "मानव कल्याण में सूक्ष्मजीव"
-                        ],
-                        Biotechnology: [
-                            "जैव प्रौद्योगिकी: सिद्धांत एवं प्रक्रियाएँ",
-                            "जैव प्रौद्योगिकी एवं उसके अनुप्रयोग"
-                        ],
-                        Ecology: [
-                            "जीव एवं जनसंख्या",
-                            "पारितंत्र",
-                            "जैव विविधता एवं संरक्षण",
-                            "पर्यावरणीय मुद्दे"
-                        ]
-                    }
-                }
-            }
-
-        };
+        // Legacy static subject/chapter mappings were removed.
+        // Course and block options are now sourced dynamically from /course-blocks.
 
         function updateDifficultyLabels() {
             const label = document.getElementById('difficultyLabel');
@@ -1429,89 +922,15 @@ function toHindiNumber(num) {
             const appliedBtn = document.getElementById('depthAppliedBtn');
 
             if (activeLanguage === 'hi') {
-                label.innerText = uiTranslations.hi.misc.difficultyType;
-                directBtn.innerText = uiTranslations.hi.misc.direct;
-                appliedBtn.innerText = uiTranslations.hi.misc.applied;
+                label.innerText = "ब्लूम स्तर";
+                directBtn.innerText = "स्तर 1";
+                appliedBtn.innerText = "स्तर 2";
             } else {
-                label.innerText = "Difficulty Type";
-                directBtn.innerText = "Direct";
-                appliedBtn.innerText = "Applied";
+                label.innerText = "Bloom Level";
+                directBtn.innerText = "Level 1";
+                appliedBtn.innerText = "Level 2";
             }
         }
-        function updateClassDropdownLabels() {
-            const dropdown = document.getElementById('classDropdown');
-            if (!dropdown) return;
-
-            const options = dropdown.options;
-
-            if (activeLanguage === 'hi') {
-                options[0].text = uiTranslations.hi.classes.select;
-                options[1].text = uiTranslations.hi.classes[10];
-                options[2].text = uiTranslations.hi.classes[11];
-                options[3].text = uiTranslations.hi.classes[12];
-            } else {
-                options[0].text = "Select Class";
-                options[1].text = "Class 10";
-                options[2].text = "Class 11";
-                options[3].text = "Class 12";
-            }
-        }
-        // const chapterMap = {
-        //     "Math": [
-        //         "Sets", "Relations and Functions", "Trigonometric Functions", 
-        //         "Complex Numbers and Quadratic Equations", "Linear Inequalities", 
-        //         "Permutations and Combinations", "Binomial Theorem", 
-        //         "Sequences and Series", "Straight Lines", "Conic Sections", 
-        //         "Introduction to Three Dimensional Geometry", "Limits and Derivatives", 
-        //         "Statistics", "Probability", "Inverse Trigonometric Functions", 
-        //         "Matrices", "Determinants", "Continuity and Differentiability", 
-        //         "Application of Derivatives", "Integrals", "Application of Integrals", 
-        //         "Differential Equations", "Vector Algebra", "Three Dimensional Geometry", 
-        //         "Linear Programming"
-        //     ],
-        //     "Physics": [
-        //         "Units and Measurements", "Motion in a Straight Line", "Motion in a Plane", 
-        //         "Laws of Motion", "Work, Energy and Power", 
-        //         "System of Particles and Rotational Motion", "Gravitation", 
-        //         "Mechanical Properties of Solids", "Mechanical Properties of Fluids", 
-        //         "Thermal Properties of Matter", "Thermodynamics", "Kinetic Theory", 
-        //         "Oscillations", "Waves", "Electric Charges and Fields", 
-        //         "Electrostatic Potential and Capacitance", "Current Electricity", 
-        //         "Moving Charges and Magnetism", "Magnetism and Matter", 
-        //         "Electromagnetic Induction", "Alternating Current", "Electromagnetic Waves", 
-        //         "Ray Optics and Optical Instruments", "Wave Optics", 
-        //         "Dual Nature of Radiation and Matter", "Atoms", "Nuclei", 
-        //         "Semiconductor Electronics: Materials, Devices and Simple Circuits"
-        //     ],
-        //     "Chemistry": [
-        //         "Some Basic Concepts of Chemistry", "Structure of Atom", 
-        //         "Classification of Elements and Periodicity in Properties", 
-        //         "Chemical Bonding and Molecular Structure", "Thermodynamics", 
-        //         "Equilibrium", "Redox Reactions", 
-        //         "Organic Chemistry: Some Basic Principles and Techniques", "Hydrocarbons",
-        //         "Solutions", "Electrochemistry", "Chemical Kinetics", 
-        //         "The d- and f-Block Elements", "Coordination Compounds", 
-        //         "Haloalkanes and Haloarenes", "Alcohols, Phenols and Ethers", 
-        //         "Aldehydes, Ketones and Carboxylic Acids", "Amines", "Biomolecules"
-        //     ],
-        //     "Biology": [
-        //         "The Living World", "Biological Classification", "Plant Kingdom", 
-        //         "Animal Kingdom", "Morphology of Flowering Plants", 
-        //         "Anatomy of Flowering Plants", "Structural Organisation in Animals", 
-        //         "Cell: The Unit of Life", "Biomolecules", "Cell Cycle and Cell Division", 
-        //         "Photosynthesis in Higher Plants", "Respiration in Plants", 
-        //         "Plant Growth and Development", "Breathing and Exchange of Gases", 
-        //         "Body Fluids and Circulation", "Excretory Products and their Elimination", 
-        //         "Locomotion and Movement", "Neural Control and Coordination", 
-        //         "Chemical Coordination and Integration", "Sexual Reproduction in Flowering Plants", 
-        //         "Human Reproduction", "Reproductive Health", "Principles of Inheritance and Variation", 
-        //         "Molecular Basis of Inheritance", "Evolution", "Human Health and Disease", 
-        //         "Microbes in Human Welfare", "Biotechnology: Principles and Processes", 
-        //         "Biotechnology and its Applications", "Organisms and Populations", 
-        //         "Ecosystem", "Biodiversity and Conservation"
-        //     ]
-        // };
-
         const availableTypes = [
             "Multiple Choice (MCQ)", "Short Answer", "True/False",
             // "Case Study Analysis", "Fill-in-the-Blanks"
@@ -1521,27 +940,336 @@ function toHindiNumber(num) {
         let allQuestions = [];
         let filteredQuestions = [];
         let cursor = 0;
-        let activeSubject = "";
-        let activeDepth = "DOK level 1: Recall & Reproduction";
+        let activeCourse = "";
+        let activeBlock = "";
+        let activeDepth = "Bloom level 1: Remember";
         let activeLanguage = localStorage.getItem('language') || "en";
         document.documentElement.setAttribute('data-lang', activeLanguage);
 
+        let currentMode = "single";
+        let currentUseRag = JSON.parse(localStorage.getItem('use_rag') || 'true');
+        let currentUseCitation = JSON.parse(localStorage.getItem('use_citation') || 'false');
+        let currentEnableAlignment = JSON.parse(localStorage.getItem('enable_alignment') || 'true');
+        let currentEnableDynamicDropoff = JSON.parse(localStorage.getItem('enable_dynamic_dropoff') || 'true');
+        let currentEnableGraphExpansion = JSON.parse(localStorage.getItem('enable_graph_expansion') || 'false');
+        let currentEnableTaskKeywords = JSON.parse(localStorage.getItem('enable_task_keywords') || 'true');
+        let currentTemperature = parseFloat(localStorage.getItem('model_temperature') || '0.7');
 
+        // Dynamic Provider Variables
+        let availableModels = [];
+        let currentChairman = "";
+        let currentMembers = [];
 
-        let currentChairman = "Param-17B-IBM-RAG"; // Temporarily set to Groq default
-        let currentMembers = ["Param-17B-IBM-RAG"]; // Temporarily set to Groq default
-
-        const availableModels = [
-
-            { id: "Param-17B-IBM-RAG", name: "Param-17B-IBM-RAG" },
-            { id: "Qwen3-32B", name: "Qwen3-32B" },
-            { id: "Param-17B", name: "Param 17B" },
-            
+        const groqModels = [
+            { id: "groq-llama-70b", name: "Groq Llama 3.3 70B" },
+            { id: "groq-llama-8b", name: "Groq Llama 3.1 8B" },
+            { id: "groq-qwen-32b", name: "Groq Qwen 3 32B" },
+            { id: "groq-gpt-oss-20b", name: "Groq GPT OSS 20B" },
+            { id: "groq-gpt-oss-120b", name: "Groq GPT OSS 120B" }
         ];
+
+        const ollamaModels = [
+            { id: "ollama-gemma4-e4b", name: "Ollama Gemma 4 E4B" },
+            { id: "ollama-olmo-3-7b", name: "Ollama OLMo 3 7B" },
+            { id: "ollama-phi4-mini", name: "Ollama Phi-4 Mini" },
+            { id: "ollama-qwen-2b", name: "Ollama Qwen 3.5 2B" },
+            { id: "ollama-gemma4-e2b", name: "Ollama Gemma 4 E2B" },
+            { id: "ollama-qwen-4b", name: "Ollama Qwen 3.5 4B" },
+            { id: "ollama-gemma4-31b", name: "Ollama Gemma 4 31B" }
+        ];
+
+        async function initProviderAndModels() {
+            let provider = "groq";
+            try {
+                const res = await fetch('/health');
+                const data = await res.json();
+                if (data.provider) provider = data.provider;
+            } catch (e) {
+                console.warn("Failed to fetch provider, defaulting to Groq", e);
+            }
+
+            // Assign models based on provider
+            if (provider === 'ollama') {
+                availableModels = ollamaModels;
+                currentChairman = "ollama-gemma4-e4b"; 
+                currentMembers = ["ollama-qwen-2b"]; 
+            } else {
+                availableModels = groqModels;
+                currentChairman = "groq-llama-70b";
+                currentMembers = ["groq-llama-8b"];
+            }
+
+            // Populate the Dropdown
+            const selectEl = document.getElementById('chairmanSelect');
+            selectEl.innerHTML = '';
+            availableModels.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m.id;
+                opt.textContent = m.name;
+                selectEl.appendChild(opt);
+            });
+
+            // Set UI defaults
+            selectEl.value = currentChairman;
+            initializeMemberCheckboxes();
+            updateChairmanLabel();
+        }
+
+        function normalizeLegacyModelId(modelId) {
+            if (modelId === 'rag-piped-groq-70b') {
+                return 'groq-llama-70b';
+            }
+            return modelId;
+        }
+
+        function getModelDisplayName(modelId) {
+            const normalized = normalizeLegacyModelId(modelId);
+            const fromList = availableModels.find(m => m.id === normalized)?.name;
+            return fromList || normalized || 'Unknown';
+        }
+
+        function ensureCurrentChairmanIsValid() {
+            currentChairman = normalizeLegacyModelId(currentChairman);
+            const hasModel = availableModels.some(model => model.id === currentChairman);
+            if (!hasModel && availableModels.length > 0) {
+                currentChairman = availableModels[0].id; // Fallback to first available
+                document.getElementById('chairmanSelect').value = currentChairman;
+            }
+        }
+
+        function normalizeLegacyModelId(modelId) {
+            if (modelId === 'rag-piped-groq-70b') {
+                return 'groq-llama-70b';
+            }
+            return modelId;
+        }
+
+        function getModelDisplayName(modelId) {
+            const normalized = normalizeLegacyModelId(modelId);
+            const fromList = availableModels.find(m => m.id === normalized)?.name;
+            return fromList || normalized || 'Unknown';
+        }
+
+        function ensureCurrentChairmanIsValid() {
+            currentChairman = normalizeLegacyModelId(currentChairman);
+            const hasModel = availableModels.some(model => model.id === currentChairman);
+            if (!hasModel) {
+                currentChairman = 'groq-llama-70b';
+            }
+        }
+
+        function updateModeUI() {
+            const memberSection = document.getElementById('memberSection');
+            const modeSelect = document.getElementById('modeSelect');
+            const primaryModelLabel = document.getElementById('primaryModelLabel');
+            currentMode = modeSelect.value;
+
+            if (currentMode === 'council') {
+                memberSection.classList.remove('hidden');
+                primaryModelLabel.textContent = 'Chairman Model';
+            } else {
+                memberSection.classList.add('hidden');
+                primaryModelLabel.textContent = 'Model';
+            }
+
+            updateChairmanLabel();
+        }
+
+        function syncRagToggle() {
+            const toggleBtn = document.getElementById('ragToggleBtn');
+            const thumb = document.getElementById('ragToggleThumb');
+            if (!toggleBtn || !thumb) return;
+
+            toggleBtn.setAttribute('aria-checked', currentUseRag ? 'true' : 'false');
+            toggleBtn.style.background = currentUseRag ? 'var(--accent-primary)' : 'var(--btn-secondary-bg)';
+
+            if (currentUseRag) {
+                thumb.style.transform = 'translateX(20px)';
+                thumb.style.borderColor = '#ffffff';
+            } else {
+                thumb.style.transform = 'translateX(0)';
+                thumb.style.borderColor = 'rgba(15, 23, 42, 0.15)';
+            }
+        }
+
+        function toggleRagSetting(event) {
+            if (event) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+            currentUseRag = !currentUseRag;
+            localStorage.setItem('use_rag', String(currentUseRag));
+            syncRagToggle();
+            syncCitationToggle();
+        }
+
+        function syncAlignmentToggle() {
+            const toggleBtn = document.getElementById('alignmentToggleBtn');
+            const thumb = document.getElementById('alignmentToggleThumb');
+            if (!toggleBtn || !thumb) return;
+
+            toggleBtn.setAttribute('aria-checked', currentEnableAlignment ? 'true' : 'false');
+            toggleBtn.style.background = currentEnableAlignment ? 'var(--accent-primary)' : 'var(--btn-secondary-bg)';
+
+            if (currentEnableAlignment) {
+                thumb.style.transform = 'translateX(20px)';
+                thumb.style.borderColor = '#ffffff';
+            } else {
+                thumb.style.transform = 'translateX(0)';
+                thumb.style.borderColor = 'rgba(15, 23, 42, 0.15)';
+            }
+        }
+
+        function toggleAlignmentSetting(event) {
+            if (event) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+            currentEnableAlignment = !currentEnableAlignment;
+            localStorage.setItem('enable_alignment', String(currentEnableAlignment));
+            syncAlignmentToggle();
+        }
+
+        function syncDynamicDropoffToggle() {
+            const toggleBtn = document.getElementById('dynamicDropoffToggleBtn');
+            const thumb = document.getElementById('dynamicDropoffToggleThumb');
+            if (!toggleBtn || !thumb) return;
+
+            toggleBtn.setAttribute('aria-checked', currentEnableDynamicDropoff ? 'true' : 'false');
+            toggleBtn.style.background = currentEnableDynamicDropoff ? 'var(--accent-primary)' : 'var(--btn-secondary-bg)';
+
+            if (currentEnableDynamicDropoff) {
+                thumb.style.transform = 'translateX(20px)';
+                thumb.style.borderColor = '#ffffff';
+            } else {
+                thumb.style.transform = 'translateX(0)';
+                thumb.style.borderColor = 'rgba(15, 23, 42, 0.15)';
+            }
+        }
+
+        function toggleDynamicDropoffSetting(event) {
+            if (event) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+            currentEnableDynamicDropoff = !currentEnableDynamicDropoff;
+            localStorage.setItem('enable_dynamic_dropoff', String(currentEnableDynamicDropoff));
+            syncDynamicDropoffToggle();
+        }
+
+        function syncGraphExpansionToggle() {
+            const toggleBtn = document.getElementById('graphExpansionToggleBtn');
+            const thumb = document.getElementById('graphExpansionToggleThumb');
+            if (!toggleBtn || !thumb) return;
+
+            toggleBtn.setAttribute('aria-checked', currentEnableGraphExpansion ? 'true' : 'false');
+            toggleBtn.style.background = currentEnableGraphExpansion ? 'var(--accent-primary)' : 'var(--btn-secondary-bg)';
+
+            if (currentEnableGraphExpansion) {
+                thumb.style.transform = 'translateX(20px)';
+                thumb.style.borderColor = '#ffffff';
+            } else {
+                thumb.style.transform = 'translateX(0)';
+                thumb.style.borderColor = 'rgba(15, 23, 42, 0.15)';
+            }
+        }
+
+        function syncCitationToggle() {
+            const toggleBtn = document.getElementById('citationToggleBtn');
+            const thumb = document.getElementById('citationToggleThumb');
+            if (!toggleBtn || !thumb) return;
+
+            toggleBtn.setAttribute('aria-checked', currentUseCitation ? 'true' : 'false');
+            toggleBtn.style.background = currentUseCitation ? 'var(--accent-primary)' : 'var(--btn-secondary-bg)';
+
+            if (currentUseCitation) {
+                thumb.style.transform = 'translateX(20px)';
+                thumb.style.borderColor = '#ffffff';
+            } else {
+                thumb.style.transform = 'translateX(0)';
+                thumb.style.borderColor = 'rgba(15, 23, 42, 0.15)';
+            }
+        }
+
+        function toggleCitationSetting(event) {
+            if (event) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+            currentUseCitation = !currentUseCitation;
+            localStorage.setItem('use_citation', String(currentUseCitation));
+            syncCitationToggle();
+        }
+
+        function toggleGraphExpansionSetting(event) {
+            if (event) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+            currentEnableGraphExpansion = !currentEnableGraphExpansion;
+            localStorage.setItem('enable_graph_expansion', String(currentEnableGraphExpansion));
+            syncGraphExpansionToggle();
+        }
+
+        function syncTaskKeywordsToggle() {
+            const toggleBtn = document.getElementById('taskKeywordsToggleBtn');
+            const thumb = document.getElementById('taskKeywordsToggleThumb');
+            if (!toggleBtn || !thumb) return;
+
+            toggleBtn.setAttribute('aria-checked', currentEnableTaskKeywords ? 'true' : 'false');
+            toggleBtn.style.background = currentEnableTaskKeywords ? 'var(--accent-primary)' : 'var(--btn-secondary-bg)';
+
+            if (currentEnableTaskKeywords) {
+                thumb.style.transform = 'translateX(20px)';
+                thumb.style.borderColor = '#ffffff';
+            } else {
+                thumb.style.transform = 'translateX(0)';
+                thumb.style.borderColor = 'rgba(15, 23, 42, 0.15)';
+            }
+        }
+
+        function toggleTaskKeywordsSetting(event) {
+            if (event) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+            currentEnableTaskKeywords = !currentEnableTaskKeywords;
+            localStorage.setItem('enable_task_keywords', String(currentEnableTaskKeywords));
+            syncTaskKeywordsToggle();
+        }
+
+        function clampTemperature(value) {
+            if (!Number.isFinite(value)) return 0.7;
+            return Math.min(1, Math.max(0, value));
+        }
+
+        function syncTemperatureControls() {
+            const slider = document.getElementById('temperatureSlider');
+            const input = document.getElementById('temperatureInput');
+            if (!slider || !input) return;
+
+            const safeTemp = clampTemperature(currentTemperature);
+            currentTemperature = safeTemp;
+            slider.value = safeTemp.toFixed(2);
+            input.value = safeTemp.toFixed(2);
+        }
+
+        function onTemperatureSliderChange(event) {
+            currentTemperature = clampTemperature(parseFloat(event.target.value));
+            localStorage.setItem('model_temperature', String(currentTemperature));
+            syncTemperatureControls();
+        }
+
+        function onTemperatureInputChange(event) {
+            currentTemperature = clampTemperature(parseFloat(event.target.value));
+            localStorage.setItem('model_temperature', String(currentTemperature));
+            syncTemperatureControls();
+        }
 
         // Initialize member checkboxes
         function initializeMemberCheckboxes() {
             const container = document.getElementById('memberCheckboxes');
+            if (!container) return;
             container.innerHTML = '';
             availableModels.forEach(model => {
                 const div = document.createElement('div');
@@ -1587,6 +1315,14 @@ function toHindiNumber(num) {
                     cb.disabled = false;
                 }
             });
+
+            if (currentMode === 'council' && currentMembers.length === 0) {
+                const firstValid = Array.from(checkboxes).find(cb => !cb.disabled);
+                if (firstValid) {
+                    firstValid.checked = true;
+                    currentMembers = [firstValid.value];
+                }
+            }
         }
         function updateStaticLabels() {
             const el = document.getElementById('complexityLabel');
@@ -1596,41 +1332,26 @@ function toHindiNumber(num) {
                     ? uiTranslations.hi.misc.complexity
                     : 'Complexity Level';
         }
-        function updateChairmanLabel() {
-            const chairmanId = document.getElementById('chairmanSelect').value;
-            const chairmanName = availableModels.find(m => m.id === chairmanId)?.name || "Unknown";
-            document.getElementById('currentModelLabel').innerText = `Model: ${chairmanName}`;
-            updateMemberSelection();
+
+    async function initializeApp() {
+            await initProviderAndModels();
+            
+            document.getElementById('modeSelect').value = currentMode;
+            updateModeUI();
+            
+            document.getElementById('languageDropdown').value = activeLanguage;
+            updateDifficultyLabels();
+            updateShuffleLabel();
+            updateGenerateButton();
+            updateQuestionDistributionLabel();
+            updateWorkspaceText();
+            updateStartChatButton();
+            loadCourseCatalog();
         }
 
-        // Initialize on page load
-        initializeMemberCheckboxes();
-        updateChairmanLabel();
-        // Initialize language on page load
-        document.getElementById('languageDropdown').value = activeLanguage;
-        updateSubjectButtons();
-updateClassDropdownLabels();
-updateDifficultyLabels();
-updateShuffleLabel();
-updateGenerateButton();
-updateQuestionDistributionLabel();
-updateWorkspaceText();
-updateStartChatButton();
+        // Run the app
+        initializeApp();
 
-
-if (activeSubject) {
-    loadChaptersForSelection(activeSubject);
-} else {
-    resetSubjectsTopicsChapters();
-}
-
-        // document.getElementById('languageDropdown').addEventListener('change', async function() {
-        //     activeLanguage = this.value;
-        //     localStorage.setItem('language', activeLanguage);
-        //     if (activeSubject) {
-        //         await loadChaptersForSubject(activeSubject);
-        //     }
-        // });
         function updateStartChatButton(){
     const btn = document.getElementById("startChatBtn");
     if(!btn) return;
@@ -1646,8 +1367,6 @@ if (activeSubject) {
             document.documentElement.setAttribute('data-lang', activeLanguage);
 
 
-            updateSubjectButtons();
-            updateClassDropdownLabels();
             updateDifficultyLabels();
             updateShuffleLabel();
             updateGenerateButton();
@@ -1655,13 +1374,8 @@ if (activeSubject) {
             updateQuestionDistributionLabel(); 
             updateWorkspaceText();
             updateStartChatButton();
-
-            // 🔴 IMPORTANT: always rebuild chapter dropdown
-            if (activeSubject) {
-                loadChaptersForSelection(activeSubject);
-            } else {
-                resetSubjectsTopicsChapters();
-            }
+            populateCourseDropdown();
+            populateBlockDropdown(activeCourse);
         });
 
         function updateGenerateButton(loading = false) {
@@ -1709,10 +1423,10 @@ if (activeSubject) {
                     form.appendChild(input);
                 }
                 
-                add("subject", activeSubject);
+                add("subject", activeCourse);
                 add("language", activeLanguage);
-                add("class_level", activeClass);
-                add("chapter", document.getElementById("chapterDropdown").value);
+                add("class_level", "");
+                add("chapter", document.getElementById("blockDropdown").value);
                 add("context", contextText);
 
                 document.body.appendChild(form);
@@ -1743,88 +1457,155 @@ if (activeSubject) {
                 typeContainer.appendChild(div);
             });
         }
-        function resetSubjectsTopicsChapters() {
-            activeSubject = "";
-
-            document.querySelectorAll('.subj-btn')
-                .forEach(btn => btn.classList.remove('active-btn'));
-
-            const chapterDropdown = document.getElementById('chapterDropdown');
-            chapterDropdown.innerHTML = `
-        <option value="">
-            ${activeLanguage === 'hi'
-                    ? 'पहले विषय चुनें'
-                    : 'Select Subject First'}
-        </option>
-    `;
+        function normalizeCourseLabel(rawName) {
+            const clean = String(rawName || "").trim();
+            const parts = clean.split("_");
+            if (parts.length === 1) return clean;
+            return `${parts[0].trim()}: ${parts.slice(1).join("_").trim()}`;
         }
 
-        function loadChaptersForSelection(subject) {
-            const dropdown = document.getElementById('chapterDropdown');
-
-            dropdown.innerHTML = `
-                <option value="">
-                    ${activeLanguage === 'hi'
-                    ? 'अध्याय चुनें'
-                    : 'Select Chapter'}
-                </option>
-            `;
-
-            if (!activeClass || !subject) {
-                dropdown.innerHTML = `
-        <option value="">
-            ${activeLanguage === 'hi'
-                        ? 'पहले कक्षा चुनें'
-                        : 'Select Class First'}
-        </option>
-    `;
-                return;
+        async function loadCourseCatalog() {
+            try {
+                const response = await fetch('/course-blocks');
+                const payload = await response.json();
+                courseCatalog = Array.isArray(payload?.courses) ? payload.courses : [];
+            } catch (error) {
+                console.error('Failed to load course catalog', error);
+                courseCatalog = [];
             }
 
+            populateCourseDropdown();
+            populateBlockDropdown(activeCourse);
+        }
 
-            const data =
-                chapterMap[activeClass]?.[activeLanguage]?.[subject];
+        function populateCourseDropdown() {
+            const courseDropdown = document.getElementById('courseDropdown');
+            if (!courseDropdown) return;
 
-            if (!data) return;
+            courseDropdown.innerHTML = '';
 
-            // Topic → Chapters
-            Object.entries(data).forEach(([topic, chapters]) => {
-                const optGroup = document.createElement('optgroup');
-                optGroup.label = activeLanguage === 'hi'
-                    ? (uiTranslations.hi.misc.groupNames[topic] || topic)
-                    : topic;
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = activeLanguage === 'hi' ? 'कोर्स चुनें' : 'Select Course';
+            courseDropdown.appendChild(placeholder);
 
-                chapters.forEach(chapterName => {
-                    const opt = document.createElement('option');
-                    opt.value = chapterName;
-                    opt.textContent = chapterName; // safer for Hindi text
-                    optGroup.appendChild(opt);
-                });
-
-
-                dropdown.appendChild(optGroup);
+            courseCatalog.forEach((course) => {
+                const option = document.createElement('option');
+                option.value = course.course_name;
+                option.textContent = normalizeCourseLabel(course.course_name);
+                courseDropdown.appendChild(option);
             });
+
+            if (activeCourse && courseCatalog.some(c => c.course_name === activeCourse)) {
+                courseDropdown.value = activeCourse;
+            } else {
+                activeCourse = '';
+            }
+        }
+
+        function populateBlockDropdown(courseName) {
+            const blockDropdown = document.getElementById('blockDropdown');
+            if (!blockDropdown) return;
+
+            blockDropdown.innerHTML = '';
+
+            const course = courseCatalog.find(c => c.course_name === courseName);
+            const blocks = Array.isArray(course?.blocks) ? course.blocks : [];
+
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = activeLanguage === 'hi' ? 'ब्लॉक चुनें' : 'Select Block';
+            blockDropdown.appendChild(placeholder);
+
+            blocks.forEach((block) => {
+                const option = document.createElement('option');
+                option.value = block;
+                option.textContent = block;
+                blockDropdown.appendChild(option);
+            });
+
+            if (activeBlock && blocks.includes(activeBlock)) {
+                blockDropdown.value = activeBlock;
+            } else {
+                activeBlock = '';
+            }
         }
         // Initialize Type inputs
         const typeContainer = document.getElementById('typeDistribution');
 renderQuestionTypes();
+        syncTemperatureControls();
 
+
+        function openSettings() {
+            const modal = document.getElementById('settingsModal');
+            modal.classList.remove('hidden');
+            ensureCurrentChairmanIsValid();
+            document.getElementById('modeSelect').value = currentMode;
+            document.getElementById('chairmanSelect').value = currentChairman;
+            syncRagToggle();
+            syncCitationToggle();
+            syncAlignmentToggle();
+            syncDynamicDropoffToggle();
+            syncGraphExpansionToggle();
+            syncTaskKeywordsToggle();
+            syncTemperatureControls();
+            updateModeUI();
+            updateMemberSelection();
+        }
+
+        function updateChairmanLabel() {
+            ensureCurrentChairmanIsValid();
+            const chairmanId = document.getElementById('chairmanSelect').value;
+            const chairmanName = getModelDisplayName(chairmanId);
+            
+            const modelLabelEl = document.getElementById('currentModelLabel');
+            if (modelLabelEl) {
+                modelLabelEl.innerText = currentMode === 'council' 
+                    ? `Council Chair: ${chairmanName}` 
+                    : `Model: ${chairmanName}`;
+            }
+            
+            updateMemberSelection();
+        }
+
+        function closeSettings() {
+            currentMode = document.getElementById('modeSelect').value;
+            currentChairman = normalizeLegacyModelId(document.getElementById('chairmanSelect').value);
+            ensureCurrentChairmanIsValid();
+            localStorage.setItem('use_rag', String(currentUseRag));
+            localStorage.setItem('enable_alignment', String(currentEnableAlignment));
+            localStorage.setItem('enable_dynamic_dropoff', String(currentEnableDynamicDropoff));
+            localStorage.setItem('enable_graph_expansion', String(currentEnableGraphExpansion));
+            localStorage.setItem('enable_task_keywords', String(currentEnableTaskKeywords));
+            localStorage.setItem('model_temperature', String(currentTemperature));
+            updateModeUI();
+            updateChairmanLabel();
+            document.getElementById('settingsModal').classList.add('hidden');
+        }
 
         function toggleSettings() {
             const modal = document.getElementById('settingsModal');
-            modal.classList.toggle('hidden');
-            if (!modal.classList.contains('hidden')) {
-                // Update chairman select to current value
-                document.getElementById('chairmanSelect').value = currentChairman;
-                updateMemberSelection();
+            if (modal.classList.contains('hidden')) {
+                openSettings();
             } else {
-                // Save settings when closing
-                currentChairman = document.getElementById('chairmanSelect').value;
-                updateChairmanLabel();
+                closeSettings();
             }
         }
 
+        function handleSettingsBackdropClick(event) {
+            if (event.target.id === 'settingsModal') {
+                closeSettings();
+            }
+        }
+
+        function handleSettingsContentClick(event) {
+            event.stopPropagation();
+        }
+
         // Update chairman selection handler
+        document.getElementById('modeSelect').addEventListener('change', function () {
+            updateModeUI();
+        });
         document.getElementById('chairmanSelect').addEventListener('change', function () {
             updateChairmanLabel();
         });
@@ -1834,16 +1615,15 @@ renderQuestionTypes();
             sidebar.classList.toggle('translate-x-full');
         }
 
-        function setSubject(subject, btn) {
-            activeSubject = subject;
+        document.getElementById('courseDropdown').addEventListener('change', function () {
+            activeCourse = this.value;
+            activeBlock = '';
+            populateBlockDropdown(activeCourse);
+        });
 
-            document.querySelectorAll('.subj-btn')
-                .forEach(b => b.classList.remove('active-btn'));
-
-            btn.classList.add('active-btn');
-
-            loadChaptersForSelection(subject);
-        }
+        document.getElementById('blockDropdown').addEventListener('change', function () {
+            activeBlock = this.value;
+        });
 
         function setDepth(d, btn) {
             activeDepth = d;
@@ -1860,14 +1640,134 @@ renderQuestionTypes();
         : (activeLanguage === 'hi' ? "तर्क छुपाएँ" : "HIDE LOGIC");
 
         }
+
+        function renderSessionWarnings(warnings) {
+            const box = document.getElementById('sessionWarnings');
+            if (!box) return;
+            if (!Array.isArray(warnings) || warnings.length === 0) {
+                box.classList.add('hidden');
+                box.innerHTML = '';
+                return;
+            }
+
+            box.classList.remove('hidden');
+            box.innerHTML = warnings
+                .map(msg => `<div class="mb-1">- ${msg}</div>`)
+                .join('');
+        }
+
+        function renderTypeMatchStatus(q) {
+            const el = document.getElementById('qTypeStatus');
+            if (!el) return;
+
+            if (typeof q?.type_match === 'boolean') {
+                if (q.type_match) {
+                    el.style.color = '#10b981';
+                    el.innerText = `Type Check: Matched requested type. ${q.type_match_reason || ''}`.trim();
+                } else {
+                    el.style.color = '#ef4444';
+                    el.innerText = `Type Check: Mismatch. ${q.type_match_reason || ''}`.trim();
+                }
+                return;
+            }
+
+            el.style.color = 'var(--text-secondary)';
+            el.innerText = 'Type Check: Not available for this question.';
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function formatRubricList(items) {
+            if (!Array.isArray(items) || items.length === 0) return '';
+
+            return items.map(item => {
+                if (item && typeof item === 'object' && !Array.isArray(item)) {
+                    const criterion = escapeHtml(item.criterion || item.label || item.name || 'Criterion');
+                    const marks = escapeHtml(item.marks ?? item.score ?? item.value ?? '');
+                    return `
+                        <div class="rubric-mark rounded-2xl p-4 flex items-start justify-between gap-4">
+                            <div class="min-w-0">
+                                <div class="font-semibold text-sm" style="color: var(--text-primary);">${criterion}</div>
+                            </div>
+                            <div class="text-xs font-black tracking-widest shrink-0" style="color: var(--accent-secondary);">${marks}</div>
+                        </div>
+                    `;
+                }
+                return `
+                    <div class="rubric-mark rounded-2xl p-4 text-sm" style="color: var(--text-primary);">
+                        ${escapeHtml(item)}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderRubric(rubric, mainAnswer) {
+            const rubricSection = document.getElementById('rubricSection');
+            const rubricContent = document.getElementById('rubricContent');
+            const rubricScoreSummary = document.getElementById('rubricScoreSummary');
+
+            if (!rubricSection || !rubricContent || !rubricScoreSummary) return;
+
+            if (!rubric || typeof rubric !== 'object') {
+                rubricSection.classList.add('hidden');
+                rubricContent.innerHTML = '';
+                rubricScoreSummary.innerText = '';
+                return;
+            }
+
+            const marks = Array.isArray(rubric.marks) ? rubric.marks : [];
+            const totalMarks = marks.reduce((sum, item) => {
+                const value = Number(item && typeof item === 'object' ? (item.marks ?? item.score ?? item.value ?? 0) : 0);
+                return sum + (Number.isFinite(value) ? value : 0);
+            }, 0);
+            const declaredTotal = Number(rubric.total_marks ?? rubric.totalMarks ?? 0);
+            const displayTotal = declaredTotal || totalMarks || 10;
+
+            const keyPoints = Array.isArray(rubric.key_points) ? rubric.key_points : [];
+            const answerText = mainAnswer ? mainAnswer : '';
+
+            rubricSection.classList.remove('hidden');
+            rubricScoreSummary.innerText = `Teacher rubric total: ${displayTotal} marks`;
+            rubricContent.innerHTML = `
+                ${answerText ? `
+                    <div class="rubric-mark rounded-2xl p-4">
+                        <div class="text-[11px] font-black uppercase tracking-widest mb-2" style="color: var(--text-muted);">Suggested answer</div>
+                        <div style="color: var(--text-primary); white-space: pre-wrap;">${marked.parse(answerText)}</div>
+                    </div>
+                ` : ''}
+
+                ${marks.length ? `
+                    <div>
+                        <div class="text-[11px] font-black uppercase tracking-widest mb-3" style="color: var(--text-muted);">Marking points</div>
+                        <div class="space-y-3">${formatRubricList(marks)}</div>
+                    </div>
+                ` : ''}
+
+                ${keyPoints.length ? `
+                    <div>
+                        <div class="text-[11px] font-black uppercase tracking-widest mb-3" style="color: var(--text-muted);">Key points</div>
+                        <div class="flex flex-wrap gap-2">
+                            ${keyPoints.map(point => `<span class="px-3 py-2 rounded-full text-xs font-semibold rubric-mark" style="color: var(--text-primary);">${escapeHtml(point)}</span>`).join('')}
+                        </div>
+                    </div>
+                ` : ''}
+            `;
+        }
+
         async function startSession() {
             const btn = document.getElementById('genBtn');
             const theme = "general";
-            const chapter = document.getElementById('chapterDropdown').value;
-            const standard = document.getElementById('classDropdown').value;
+            const chapter = document.getElementById('blockDropdown').value;
             const shuffle = document.getElementById('shuffleToggle').checked;
 
-            if (!activeSubject || !chapter) return alert("Select Subject and Chapter");
+            if (!activeCourse || !chapter) return alert(activeLanguage === 'hi' ? "कोर्स और ब्लॉक चुनें" : "Select Course and Block");
 
             const typeRequests = [];
             let totalQuestions = 0;
@@ -1900,44 +1800,67 @@ renderQuestionTypes();
             }
 
             allQuestions = []; cursor = 0;
+            renderSessionWarnings([]);
             updateGenerateButton(true);
 btn.disabled = true;
 
 
             // Prepare the sidebar content
-            // document.getElementById('sidebarContent').innerHTML = `
-            //     <p class='mb-2 font-bold' style="color: var(--text-primary);">Theme: ${theme}</p>
-            //     <p style="color: var(--text-secondary);">Retrieving reference chunks (${activeLanguage}) for NCERT ${activeSubject} Chapter: ${chapter}...</p>
-            //     <p class='mt-4 text-xs opacity-70' style="color: var(--text-muted);">When questions are ready, expand <strong>Source text</strong> to see the extracted chunk and use <strong>Explore in PDF</strong> to view the source page and chat.</p>
-            // `;
-            document.getElementById('sidebarContent').innerHTML = `
-                <p style="color: var(--text-secondary);">Retrieving reference chunks (${activeLanguage}) for NCERT ${activeSubject} Chapter: ${chapter}...</p>
-                <p class='mt-4 text-xs opacity-70' style="color: var(--text-muted);">When questions are ready, expand <strong>Source text</strong> to see the extracted chunk and use <strong>Explore in PDF</strong> to view the source page and chat.</p>
-            `;
-
-            document.getElementById('sidebarToggleBtn').classList.remove('hidden');
-            document.getElementById('sidebarToggleBtn').classList.add('flex');
+            const sidebarToggleBtn = document.getElementById('sidebarToggleBtn');
+            if (currentUseRag) {
+                document.getElementById('sidebarContent').innerHTML = `
+                    <p style="color: var(--text-secondary);">Retrieving reference chunks (${activeLanguage}) for ${activeCourse} - ${chapter}...</p>
+                    <p class='mt-4 text-xs opacity-70' style="color: var(--text-muted);">When questions are ready, expand <strong>Source text</strong> to see the extracted chunk and use <strong>Explore in PDF</strong> to view the source page and chat.</p>
+                `;
+                sidebarToggleBtn.classList.remove('hidden');
+                sidebarToggleBtn.classList.add('flex');
+            } else {
+                document.getElementById('sidebarContent').innerHTML = `
+                    <p style="color: var(--text-secondary);">RAG is disabled for this session.</p>
+                    <p class='mt-4 text-xs opacity-70' style="color: var(--text-muted);">Questions will be generated from the selected curriculum context without retrieved source text.</p>
+                `;
+                sidebarToggleBtn.classList.add('hidden');
+                sidebarToggleBtn.classList.remove('flex');
+                document.getElementById('contextSidebar').classList.add('translate-x-full');
+            }
 
             try {
-                const promises = typeRequests.map(req =>
+                const promises = typeRequests.map(req => {
+                    const requestBody = {
+                        language: activeLanguage,
+                        depth: activeDepth,
+                        subject: activeCourse,
+                        standard: "",
+                        chapter: chapter,
+                        theme: "general",
+                        qType: req.type,
+                        num_questions: req.count,
+                        use_rag: currentUseRag,
+                        use_citation: currentUseCitation,
+                        enable_alignment: currentEnableAlignment,
+                        enable_dynamic_dropoff: currentEnableDynamicDropoff,
+                        enable_graph_expansion: currentEnableGraphExpansion,
+                        enable_task_keywords: currentEnableTaskKeywords,
+                        temperature: currentTemperature
+                    };
+
+                    if (currentMode === 'council') {
+                        if (!currentMembers.length) {
+                            throw new Error(activeLanguage === 'hi' ? "काउंसिल मोड के लिए कम से कम एक सदस्य चुनें" : "Select at least one council member.");
+                        }
+                        requestBody.board = {
+                            chairman_model_id: currentChairman,
+                            member_model_ids: currentMembers
+                        };
+                    } else {
+                        requestBody.model_id = currentChairman;
+                    }
+
+                    return (
                     fetch('/ask', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            // board: {
-                            //     chairman_model_id: currentChairman,
-                            //     member_model_ids: currentMembers
-                            // },
-                            model_id: currentChairman,
-                            language: activeLanguage,
-                            depth: activeDepth,
-                            subject: activeSubject,
-                            standard: activeClass,
-                            chapter: chapter,
-                            theme: "general",
-                            qType: req.type,
-                            num_questions: req.count
-                        })
+                        body: JSON.stringify(requestBody)
                     }).then(async (r) => {
                         const data = await r.json().catch(() => ({}));
                         if (!r.ok) {
@@ -1948,17 +1871,48 @@ btn.disabled = true;
                         }
                         return data;
                     })
-                );
+                    );
+                });
 
-                const results = await Promise.all(promises);
+                const results = await Promise.allSettled(promises);
+                const warnings = [];
+                const failures = [];
 
-                results.forEach((data, index) => {
-                    if (Array.isArray(data)) {
-                        const typeName = typeRequests[index].type;
-                        data.forEach(q => q.category = typeName);
-                        allQuestions.push(...data);
+                results.forEach((result, index) => {
+                    const reqMeta = typeRequests[index];
+                    if (result.status === 'fulfilled') {
+                        const data = result.value;
+                        if (Array.isArray(data)) {
+                            data.forEach(q => q.category = reqMeta.type);
+                            allQuestions.push(...data);
+                            if (data.length < reqMeta.count) {
+                                warnings.push(
+                                    `${reqMeta.type}: requested ${reqMeta.count}, generated ${data.length}.`
+                                );
+                            }
+                        } else {
+                            failures.push(`${reqMeta.type}: invalid response format`);
+                        }
+                    } else {
+                        failures.push(`${reqMeta.type}: ${result.reason?.message || 'request failed'}`);
                     }
                 });
+
+                if (warnings.length > 0) {
+                    warnings.unshift('Some requests returned fewer questions than requested:');
+                }
+                if (failures.length > 0) {
+                    warnings.push(`Failed types: ${failures.join(' | ')}`);
+                }
+
+                renderSessionWarnings(warnings);
+
+                if (allQuestions.length === 0) {
+                    const reason = failures.length
+                        ? `All requests failed. ${failures.join(' | ')}`
+                        : 'No questions were generated.';
+                    throw new Error(reason);
+                }
 
                 if (shuffle) {
                     allQuestions.sort(() => Math.random() - 0.5);
@@ -1977,6 +1931,7 @@ updateQuestionDistributionLabel();
 
             } catch (e) {
                 console.error(e);
+                renderSessionWarnings([e.message || 'Generation failed. Please try again.']);
                 alert(e.message || "Generation failed. Please try again.");
             } finally {
                 updateGenerateButton(false);
@@ -2022,60 +1977,104 @@ ${activeLanguage === 'hi' ? 'सभी' : 'ALL'}
         function renderQ() {
             if (filteredQuestions.length === 0) return;
             const q = filteredQuestions[cursor];
-            document.getElementById('qTypeLabel').innerText =
-    getQuestionTypeLabel(q.category || "General Question");
+            
+            document.getElementById('qTypeLabel').innerText = getQuestionTypeLabel(q.category || "General Question");
+            renderTypeMatchStatus(q);
 
+            // 1. FIX: Render the actual question! (This got accidentally deleted)
             document.getElementById('qContent').innerHTML = marked.parse(q.question || "");
-        document.getElementById('aContent').innerHTML = marked.parse(q.answer || "");
-
+            
+            // 2. FIX: Render the answer (properly falling back to the top-level answer)
+            document.getElementById('aContent').innerHTML = marked.parse(q.rubric?.answer || q.answer || "No answer provided.");
             document.getElementById('aContent').classList.add('hidden');
+
+            // 3. Render the rubric
+            renderRubric(q.rubric || null, q.answer || "");
+
+            // 4. Handle the citation visibility and content
+            const citationDiv = document.getElementById('qCitation');
+            if (citationDiv) {
+                // STRICT CHECK: Check if the citation toggle was actually ON when this question was generated
+                const isCitationMode = q.generation_settings ? q.generation_settings.use_citation : currentUseCitation;
+
+                // Only render if the LLM provided a citation AND the user specifically requested citation mode
+                if (q.citation && isCitationMode) {
+                    // Scrub redundant "Citation:" labels injected by the LLM
+                    let cleanCitation = q.citation.replace(/^(?:\*\*Citation:\*\*\s*|Citation:\s*)+/ig, '').trim();
+                    
+                    const citationParts = cleanCitation.split(/(?:\*\*Citation:\*\*\s*|Citation:\s*)/i).filter(p => p.trim().length > 0);
+                    if (citationParts.length > 0) {
+                        cleanCitation = citationParts[0].trim();
+                    }
+
+                    citationDiv.innerHTML = marked.parse("**Citation:** *" + cleanCitation + "*");
+                    citationDiv.classList.remove('hidden');
+                } else {
+                    // If Citation Mode is OFF, hide the box completely (even if the LLM generated a citation for grounding)
+                    citationDiv.classList.add('hidden');
+                }
+            }
+
             document.getElementById('progressBar').innerText =
-    activeLanguage === 'hi'
-        ? `प्रगति: ${toHindiNumber(cursor + 1)} / ${toHindiNumber(filteredQuestions.length)}`
-        : `PROGRESS: ${cursor + 1} OF ${filteredQuestions.length}`;
+                activeLanguage === 'hi'
+                    ? `प्रगति: ${toHindiNumber(cursor + 1)} / ${toHindiNumber(filteredQuestions.length)}`
+                    : `PROGRESS: ${cursor + 1} OF ${filteredQuestions.length}`;
+
+            // Display generation time if available
+            const genTimeEl = document.getElementById('qGenerationTime');
+            const genTimeText = document.getElementById('generationTimeText');
+            if (q.generation_time_ms) {
+                const seconds = (q.generation_time_ms / 1000).toFixed(2);
+                genTimeText.textContent = `Generated in ${seconds}s`;
+                genTimeEl.classList.remove('hidden');
+            } else {
+                genTimeEl.classList.add('hidden');
+            }
 
 
             document.getElementById('revealBtn').innerText =
-    activeLanguage === 'hi'
-        ? "अध्ययन तर्क दिखाएँ"
-        : "REVEAL STUDY LOGIC";
+                activeLanguage === 'hi'
+                    ? "अध्ययन तर्क दिखाएँ"
+                    : "REVEAL STUDY LOGIC";
 
-            // renderAlignmentScore(q);
             // Source text and Explore
             const sourceTextSection = document.getElementById('sourceTextSection');
             const sourceTextContent = document.getElementById('sourceTextContent');
             const exploreBtn = document.getElementById('exploreBtn');
-            if (q.source_text.topic_chunk) {
+            const sourceText = q.source_text || {};
+            
+            if (sourceText.topic_chunk) {
                 sourceTextSection.classList.remove('hidden');
 
-                const topicText = q.source_text.topic_chunk || '';
+                const topicText = sourceText.topic_chunk || '';
                 document.getElementById('sourceTopicChunk').innerText = topicText;
 
-                // 🔴 Highlight "SOURCE TEXT" button red if RAG failed
+                // Highlight "SOURCE TEXT" button red if RAG failed
                 const toggleBtn = document.getElementById('toggleSourceTextBtn');
                 if (topicText.trim() === 'RAG failed.') {
-                    toggleBtn.style.color = '#ef4444';      // red text
+                    toggleBtn.style.color = '#ef4444';      
                     toggleBtn.style.borderColor = '#ef4444';
                 } else {
                     toggleBtn.style.color = '';
                     toggleBtn.style.borderColor = '';
                 }
                 const themeEl = document.getElementById('sourceThemeChunk');
-                if (q.source_text.theme_chunk) {
+                if (sourceText.theme_chunk) {
                     themeEl.classList.remove('hidden');
-                    themeEl.innerText = q.source_text.theme_chunk;
+                    themeEl.innerText = sourceText.theme_chunk;
                 } else {
                     themeEl.classList.add('hidden');
                 }
                 sourceTextContent.classList.add('hidden');
                 document.getElementById('sourceTextIcon').classList.remove('fa-chevron-up');
                 document.getElementById('sourceTextIcon').classList.add('fa-chevron-down');
-                // exploreBtn.classList.remove('hidden');
             } else {
                 sourceTextSection.classList.add('hidden');
                 exploreBtn.classList.add('hidden');
             }
+            
             renderMath();
+            
             // Render board opinions if available
             if (q.board_metadata) {
                 renderBoardOpinions(q.board_metadata);
@@ -2148,7 +2147,7 @@ ${activeLanguage === 'hi' ? 'सभी' : 'ALL'}
             const chairmanDiv = document.createElement('div');
             chairmanDiv.className = "p-4 rounded-xl border-l-4 mb-4";
             chairmanDiv.style.cssText = "background: rgba(99, 102, 241, 0.1); border-color: var(--accent-primary);";
-            const chairmanName = availableModels.find(m => m.id === metadata.chairman)?.name || metadata.chairman;
+            const chairmanName = getModelDisplayName(metadata.chairman);
             chairmanDiv.innerHTML = `
                 <div class="flex items-center justify-between mb-2">
                     <span class="text-sm font-bold" style="color: var(--accent-primary);">Chairman: ${chairmanName}</span>
@@ -2164,7 +2163,7 @@ ${activeLanguage === 'hi' ? 'सभी' : 'ALL'}
                     memberDiv.className = "p-4 rounded-xl border mb-3";
                     memberDiv.style.cssText = "background: var(--bg-secondary); border-color: var(--card-border);";
 
-                    const memberName = availableModels.find(m => m.id === opinion.model_id)?.name || opinion.model_id;
+                    const memberName = getModelDisplayName(opinion.model_id);
                     const rating = opinion.rating !== null && opinion.rating !== undefined ? `${opinion.rating}/10` : 'N/A';
 
                     memberDiv.innerHTML = `
@@ -2232,5 +2231,4 @@ ${activeLanguage === 'hi' ? 'सभी' : 'ALL'}
         function prevQ() { if (cursor > 0) { cursor--; renderQ(); } }
     </script>
 </body>
-
 </html>
