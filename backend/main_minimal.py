@@ -278,6 +278,24 @@ class QuestionStore:
         self.lock = Lock()
         self._init_db()
 
+    def _fetch_single(self, query: str, params: tuple = ()) -> Optional[Dict[str, Any]]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(query, params).fetchone()
+        if not row:
+            return None
+        return dict(row)
+
+    def _rowid_bounds(self) -> Dict[str, Optional[Dict[str, Any]]]:
+        return {
+            "earliest": self._fetch_single(
+                "SELECT rowid AS row_index, id FROM generated_questions ORDER BY rowid ASC LIMIT 1"
+            ),
+            "latest": self._fetch_single(
+                "SELECT rowid AS row_index, id FROM generated_questions ORDER BY rowid DESC LIMIT 1"
+            ),
+        }
+
     def _init_db(self) -> None:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
@@ -406,10 +424,10 @@ class QuestionStore:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 """
-                  SELECT id, created_at, model_id, subject, chapter, qtype, question, similarity, alignment_score,
+                  SELECT rowid AS row_index, id, created_at, model_id, subject, chapter, qtype, question, similarity, alignment_score,
                       type_match, type_match_reason, is_rag, use_citation, citation
                 FROM generated_questions
-                ORDER BY created_at DESC
+                ORDER BY rowid DESC
                 LIMIT ? OFFSET ?
                 """,
                 (limit, offset),
@@ -417,16 +435,13 @@ class QuestionStore:
         return [dict(r) for r in rows]
 
     def get_question(self, row_id: str) -> Optional[Dict[str, Any]]:
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            row = conn.execute(
-                "SELECT * FROM generated_questions WHERE id = ?",
-                (row_id,),
-            ).fetchone()
-        if not row:
+        data = self._fetch_single(
+            "SELECT rowid AS row_index, * FROM generated_questions WHERE id = ?",
+            (row_id,),
+        )
+        if not data:
             return None
 
-        data = dict(row)
         for key in ("scores_json", "source_text_json", "source_meta_json", "board_metadata_json", "rubric_json"):
             if data.get(key):
                 try:
@@ -434,6 +449,94 @@ class QuestionStore:
                 except Exception:
                     data[key.replace("_json", "")] = data[key]
         return data
+
+    def _normalize_question_row(self, row: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        if not row:
+            return None
+
+        normalized = dict(row)
+        for key in ("scores_json", "source_text_json", "source_meta_json", "board_metadata_json", "rubric_json"):
+            value = normalized.get(key)
+            if value:
+                try:
+                    normalized[key.replace("_json", "")] = json.loads(value)
+                except Exception:
+                    normalized[key.replace("_json", "")] = value
+
+        normalized["category"] = normalized.get("qtype") or normalized.get("category")
+        normalized["generation_settings"] = {
+            "use_citation": bool(normalized.get("use_citation")),
+            "use_rag": bool(normalized.get("is_rag")),
+        }
+        normalized["citation_mode"] = bool(normalized.get("use_citation"))
+        normalized["question_text"] = normalized.get("question")
+        normalized["answer_text"] = normalized.get("answer")
+        normalized["rubric"] = normalized.get("rubric") if isinstance(normalized.get("rubric"), dict) else normalized.get("rubric")
+        normalized["source_text"] = normalized.get("source_text") if isinstance(normalized.get("source_text"), dict) else normalized.get("source_text")
+        normalized["source_meta"] = normalized.get("source_meta") if isinstance(normalized.get("source_meta"), dict) else normalized.get("source_meta")
+        normalized["board_metadata"] = normalized.get("board_metadata") if isinstance(normalized.get("board_metadata"), dict) else normalized.get("board_metadata")
+        normalized["scores"] = normalized.get("scores") or {"similarity": normalized.get("similarity"), "alignment_score": normalized.get("alignment_score")}
+        return normalized
+
+    def get_question_view(self, action: str = "latest", question_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        action = (action or "latest").strip().lower()
+
+        if action == "current":
+            if not question_id:
+                return None
+            row = self.get_question(question_id)
+        elif action == "earliest":
+            row = self._fetch_single(
+                "SELECT rowid AS row_index, * FROM generated_questions ORDER BY rowid ASC LIMIT 1"
+            )
+        elif action == "latest":
+            row = self._fetch_single(
+                "SELECT rowid AS row_index, * FROM generated_questions ORDER BY rowid DESC LIMIT 1"
+            )
+        elif action in {"prev", "next"}:
+            if not question_id:
+                return None
+            current = self.get_question(question_id)
+            if not current or current.get("row_index") is None:
+                return None
+            comparator = "<" if action == "prev" else ">"
+            sort_order = "DESC" if action == "prev" else "ASC"
+            row = self._fetch_single(
+                f"SELECT rowid AS row_index, * FROM generated_questions WHERE rowid {comparator} ? ORDER BY rowid {sort_order} LIMIT 1",
+                (current["row_index"],),
+            )
+        else:
+            return None
+
+        if not row:
+            return None
+
+        normalized = self._normalize_question_row(row)
+        if not normalized:
+            return None
+
+        bounds = self._rowid_bounds()
+        earliest = bounds.get("earliest") or {}
+        latest = bounds.get("latest") or {}
+        current_index = normalized.get("row_index")
+
+        normalized["navigation"] = {
+            "current_id": normalized.get("id"),
+            "row_index": current_index,
+            "earliest_id": earliest.get("id"),
+            "latest_id": latest.get("id"),
+            "has_prev": bool(
+                earliest.get("row_index") is not None
+                and current_index is not None
+                and current_index > earliest.get("row_index")
+            ),
+            "has_next": bool(
+                latest.get("row_index") is not None
+                and current_index is not None
+                and current_index < latest.get("row_index")
+            ),
+        }
+        return normalized
 
 
 def resolve_groq_model(model_id: Optional[str]) -> str:
@@ -796,6 +899,36 @@ def get_saved_question(qid: str) -> Dict[str, Any]:
     }
     row["scores"] = row.get("scores") or {"similarity": row.get("similarity"), "alignment_score": row.get("alignment_score")}
     return row
+
+
+@app.get("/api/question-stack")
+def get_question_stack(action: str = "latest", question_id: Optional[str] = None) -> Dict[str, Any]:
+    row = store.get_question_view(action=action, question_id=question_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Question not found")
+
+    if row.get("type_match") is not None:
+        row["type_match"] = bool(row["type_match"])
+
+    try:
+        req_json = json.loads(row.get("request_json") or "{}") if row.get("request_json") else {}
+    except Exception:
+        req_json = {}
+
+    row["req"] = {
+        "model": row.get("model_id"),
+        "subject": row.get("subject"),
+        "chapter": row.get("chapter"),
+        "qType": row.get("qtype"),
+        "num_questions": req_json.get("num_questions"),
+        "enable_task_keywords": req_json.get("enable_task_keywords", True),
+    }
+    row["scores"] = row.get("scores") or {"similarity": row.get("similarity"), "alignment_score": row.get("alignment_score")}
+
+    return {
+        "question": row,
+        "navigation": row.get("navigation", {}),
+    }
 
 def _get_books_root():
     """Books root for PDF serving; must match ingest BOOKS_ROOT."""

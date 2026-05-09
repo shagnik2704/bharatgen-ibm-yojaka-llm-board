@@ -693,13 +693,25 @@
                         PROGRESS: 1 of 3
                     </span>
                     <div class="flex gap-2">
-                        <button onclick="prevQ()"
-                            class="w-12 h-12 glass-panel rounded-2xl flex items-center justify-center active:scale-90 transition btn-secondary">
+                        <button id="earliestQuestionBtn" onclick="navigateSavedQuestions('earliest')"
+                            class="w-12 h-12 glass-panel rounded-2xl flex items-center justify-center active:scale-90 transition btn-secondary hidden"
+                            title="Earliest question" aria-label="Earliest question">
+                            <i class="fa-solid fa-angles-left text-sm"></i>
+                        </button>
+                        <button id="prevQuestionBtn" onclick="prevQ()"
+                            class="w-12 h-12 glass-panel rounded-2xl flex items-center justify-center active:scale-90 transition btn-secondary"
+                            title="Previous question" aria-label="Previous question">
                             <i class="fa-solid fa-chevron-left text-sm"></i>
                         </button>
-                        <button onclick="nextQ()"
-                            class="w-12 h-12 glass-panel rounded-2xl flex items-center justify-center active:scale-90 transition btn-secondary">
+                        <button id="nextQuestionBtn" onclick="nextQ()"
+                            class="w-12 h-12 glass-panel rounded-2xl flex items-center justify-center active:scale-90 transition btn-secondary"
+                            title="Next question" aria-label="Next question">
                             <i class="fa-solid fa-chevron-right text-sm"></i>
+                        </button>
+                        <button id="latestQuestionBtn" onclick="navigateSavedQuestions('latest')"
+                            class="w-12 h-12 glass-panel rounded-2xl flex items-center justify-center active:scale-90 transition btn-secondary hidden"
+                            title="Latest question" aria-label="Latest question">
+                            <i class="fa-solid fa-angles-right text-sm"></i>
                         </button>
                     </div>
                 </div>
@@ -940,6 +952,10 @@ function toHindiNumber(num) {
         let allQuestions = [];
         let filteredQuestions = [];
         let cursor = 0;
+        let viewerMode = 'session';
+        let currentSavedQuestionId = localStorage.getItem('question_viewer_current_id') || '';
+        let savedQuestionNavigation = null;
+        let currentDisplayedQuestion = null;
         let activeCourse = "";
         let activeBlock = "";
         let activeDepth = "Bloom level 1: Remember";
@@ -1346,7 +1362,9 @@ function toHindiNumber(num) {
             updateQuestionDistributionLabel();
             updateWorkspaceText();
             updateStartChatButton();
-            loadCourseCatalog();
+            await loadCourseCatalog();
+
+            await loadInitialSavedQuestion();
         }
 
         // Run the app
@@ -1394,6 +1412,203 @@ function toHindiNumber(num) {
                         : 'GENERATE SESSION';
             }
         }
+
+        function setViewerMode(mode) {
+            viewerMode = mode;
+
+            const typeTabs = document.getElementById('typeTabs');
+            const sessionWarnings = document.getElementById('sessionWarnings');
+
+            if (mode === 'saved') {
+                typeTabs.classList.add('hidden');
+                sessionWarnings.classList.add('hidden');
+            } else {
+                typeTabs.classList.remove('hidden');
+            }
+        }
+
+        function updateHistoryNavButtons(nav) {
+            const earliestBtn = document.getElementById('earliestQuestionBtn');
+            const prevBtn = document.getElementById('prevQuestionBtn');
+            const nextBtn = document.getElementById('nextQuestionBtn');
+            const latestBtn = document.getElementById('latestQuestionBtn');
+            if (!prevBtn || !nextBtn) return;
+
+            if (viewerMode === 'saved') {
+                if (earliestBtn) {
+                    earliestBtn.classList.remove('hidden');
+                    earliestBtn.disabled = !nav?.earliest_id || !nav?.has_prev;
+                    earliestBtn.style.opacity = earliestBtn.disabled ? '0.45' : '1';
+                }
+                if (latestBtn) {
+                    latestBtn.classList.remove('hidden');
+                    latestBtn.disabled = !nav?.latest_id || !nav?.has_next;
+                    latestBtn.style.opacity = latestBtn.disabled ? '0.45' : '1';
+                }
+                prevBtn.disabled = !nav?.has_prev;
+                nextBtn.disabled = !nav?.has_next;
+                prevBtn.style.opacity = nav?.has_prev ? '1' : '0.45';
+                nextBtn.style.opacity = nav?.has_next ? '1' : '0.45';
+            } else {
+                if (earliestBtn) earliestBtn.classList.add('hidden');
+                if (latestBtn) latestBtn.classList.add('hidden');
+                prevBtn.disabled = filteredQuestions.length <= 1 || cursor <= 0;
+                nextBtn.disabled = filteredQuestions.length <= 1 || cursor >= filteredQuestions.length - 1;
+                prevBtn.style.opacity = prevBtn.disabled ? '0.45' : '1';
+                nextBtn.style.opacity = nextBtn.disabled ? '0.45' : '1';
+            }
+        }
+
+        function renderQuestionToView(q, options = {}) {
+            if (!q) return;
+
+            currentDisplayedQuestion = q;
+            const mode = options.mode || 'session';
+            setViewerMode(mode);
+
+            document.getElementById('qTypeLabel').innerText = getQuestionTypeLabel(q.category || 'General Question');
+            renderTypeMatchStatus(q);
+
+            document.getElementById('qContent').innerHTML = marked.parse(q.question || '');
+            document.getElementById('aContent').innerHTML = marked.parse(q.rubric?.answer || q.answer || 'No answer provided.');
+            document.getElementById('aContent').classList.add('hidden');
+            renderRubric(q.rubric || null, q.answer || '');
+
+            const citationDiv = document.getElementById('qCitation');
+            if (citationDiv) {
+                const isCitationMode = q.generation_settings ? q.generation_settings.use_citation : currentUseCitation;
+
+                if (q.citation && isCitationMode) {
+                    let cleanCitation = q.citation.replace(/^(?:\*\*Citation:\*\*\s*|Citation:\s*)+/ig, '').trim();
+                    const citationParts = cleanCitation.split(/(?:\*\*Citation:\*\*\s*|Citation:\s*)/i).filter(p => p.trim().length > 0);
+                    if (citationParts.length > 0) {
+                        cleanCitation = citationParts[0].trim();
+                    }
+
+                    citationDiv.innerHTML = marked.parse('**Citation:** *' + cleanCitation + '*');
+                    citationDiv.classList.remove('hidden');
+                } else {
+                    citationDiv.classList.add('hidden');
+                }
+            }
+
+            const progressBar = document.getElementById('progressBar');
+            if (mode === 'saved') {
+                progressBar.innerText = activeLanguage === 'hi'
+                    ? `प्रश्न आईडी: ${q.id || ''}`
+                    : `Question ID: ${q.id || ''}`;
+            } else {
+                progressBar.innerText = activeLanguage === 'hi'
+                    ? `प्रगति: ${toHindiNumber(cursor + 1)} / ${toHindiNumber(filteredQuestions.length)}`
+                    : `PROGRESS: ${cursor + 1} OF ${filteredQuestions.length}`;
+            }
+
+            const genTimeEl = document.getElementById('qGenerationTime');
+            const genTimeText = document.getElementById('generationTimeText');
+            if (q.generation_time_ms) {
+                const seconds = (q.generation_time_ms / 1000).toFixed(2);
+                genTimeText.textContent = `Generated in ${seconds}s`;
+                genTimeEl.classList.remove('hidden');
+            } else {
+                genTimeEl.classList.add('hidden');
+            }
+
+            document.getElementById('revealBtn').innerText = activeLanguage === 'hi' ? 'अध्ययन तर्क दिखाएँ' : 'REVEAL STUDY LOGIC';
+
+            const sourceTextSection = document.getElementById('sourceTextSection');
+            const sourceTextContent = document.getElementById('sourceTextContent');
+            const exploreBtn = document.getElementById('exploreBtn');
+            const sourceText = q.source_text || {};
+
+            if (sourceText.topic_chunk) {
+                sourceTextSection.classList.remove('hidden');
+
+                const topicText = sourceText.topic_chunk || '';
+                document.getElementById('sourceTopicChunk').innerText = topicText;
+
+                const toggleBtn = document.getElementById('toggleSourceTextBtn');
+                if (topicText.trim() === 'RAG failed.') {
+                    toggleBtn.style.color = '#ef4444';
+                    toggleBtn.style.borderColor = '#ef4444';
+                } else {
+                    toggleBtn.style.color = '';
+                    toggleBtn.style.borderColor = '';
+                }
+                const themeEl = document.getElementById('sourceThemeChunk');
+                if (sourceText.theme_chunk) {
+                    themeEl.classList.remove('hidden');
+                    themeEl.innerText = sourceText.theme_chunk;
+                } else {
+                    themeEl.classList.add('hidden');
+                }
+                sourceTextContent.classList.add('hidden');
+                document.getElementById('sourceTextIcon').classList.remove('fa-chevron-up');
+                document.getElementById('sourceTextIcon').classList.add('fa-chevron-down');
+            } else {
+                sourceTextSection.classList.add('hidden');
+                exploreBtn.classList.add('hidden');
+            }
+
+            renderMath();
+
+            if (q.board_metadata) {
+                renderBoardOpinions(q.board_metadata);
+                document.getElementById('boardOpinionsSection').classList.remove('hidden');
+            } else {
+                document.getElementById('boardOpinionsSection').classList.add('hidden');
+            }
+
+            document.getElementById('welcomeView').classList.add('hidden');
+            document.getElementById('questionView').classList.remove('hidden');
+            updateHistoryNavButtons(options.navigation || null);
+        }
+
+        async function loadSavedQuestion(questionId = '', action = 'current') {
+            const query = new URLSearchParams();
+            query.set('action', action);
+            if (questionId) query.set('question_id', questionId);
+
+            const response = await fetch(`/api/question-stack?${query.toString()}`);
+            if (!response.ok) {
+                throw new Error(`Failed to load saved question: ${response.statusText}`);
+            }
+
+            const payload = await response.json();
+            const question = payload?.question;
+            if (!question) {
+                throw new Error('No question data returned');
+            }
+
+            currentSavedQuestionId = question.id || questionId || '';
+            savedQuestionNavigation = payload.navigation || null;
+            localStorage.setItem('question_viewer_current_id', currentSavedQuestionId);
+            renderQuestionToView(question, { mode: 'saved', navigation: savedQuestionNavigation });
+            return question;
+        }
+
+        async function loadInitialSavedQuestion() {
+            try {
+                if (currentSavedQuestionId) {
+                    try {
+                        await loadSavedQuestion(currentSavedQuestionId, 'current');
+                        return;
+                    } catch (error) {
+                        console.warn('Stored question id could not be loaded, falling back to latest', error);
+                    }
+                }
+
+                await loadSavedQuestion('', 'latest');
+            } catch (error) {
+                console.warn('No saved question could be loaded on startup', error);
+                setViewerMode('session');
+            }
+        }
+
+        async function navigateSavedQuestions(action) {
+            if (!currentSavedQuestionId) return;
+            await loadSavedQuestion(currentSavedQuestionId, action);
+        }
+
         function getQuestionTypeLabel(type) {
     if (activeLanguage === 'hi') {
         return uiTranslations.hi.questionTypes[type] || type;
@@ -1402,7 +1617,7 @@ function toHindiNumber(num) {
 }
             function startChat(){
 
-                const q = filteredQuestions[cursor];
+                const q = currentDisplayedQuestion || filteredQuestions[cursor];
                 if(!q) return alert("No question loaded");
 
                 const contextText =
@@ -1799,10 +2014,17 @@ renderQuestionTypes();
                 return;
             }
 
-            allQuestions = []; cursor = 0;
+            // Preserve the current session stack and prepend newly generated questions on top.
+            const existingQuestions = Array.isArray(allQuestions) ? [...allQuestions] : [];
+            const newQuestions = [];
+            filteredQuestions = [];
+            cursor = 0;
+            currentDisplayedQuestion = null;
+            savedQuestionNavigation = null;
+            viewerMode = 'session';
             renderSessionWarnings([]);
             updateGenerateButton(true);
-btn.disabled = true;
+            btn.disabled = true;
 
 
             // Prepare the sidebar content
@@ -1884,7 +2106,7 @@ btn.disabled = true;
                         const data = result.value;
                         if (Array.isArray(data)) {
                             data.forEach(q => q.category = reqMeta.type);
-                            allQuestions.push(...data);
+                            newQuestions.push(...data);
                             if (data.length < reqMeta.count) {
                                 warnings.push(
                                     `${reqMeta.type}: requested ${reqMeta.count}, generated ${data.length}.`
@@ -1907,23 +2129,47 @@ btn.disabled = true;
 
                 renderSessionWarnings(warnings);
 
-                if (allQuestions.length === 0) {
+                if (newQuestions.length === 0) {
                     const reason = failures.length
                         ? `All requests failed. ${failures.join(' | ')}`
                         : 'No questions were generated.';
                     throw new Error(reason);
                 }
 
-                if (shuffle) {
-                    allQuestions.sort(() => Math.random() - 0.5);
+                try {
+                    const latestResp = await fetch('/api/question-stack?action=latest');
+                    if (latestResp.ok) {
+                        const latestPayload = await latestResp.json();
+                        const latestQuestionId = latestPayload?.question?.id;
+                        if (latestQuestionId) {
+                            currentSavedQuestionId = latestQuestionId;
+                            localStorage.setItem('question_viewer_current_id', latestQuestionId);
+                        }
+                    }
+                } catch (error) {
+                    console.warn('Could not refresh saved question pointer', error);
                 }
 
+                if (shuffle) {
+                    newQuestions.sort(() => Math.random() - 0.5);
+                }
+
+                allQuestions = [...newQuestions, ...existingQuestions];
                 filteredQuestions = [...allQuestions];
                 renderTabs(typeRequests);
+                viewerMode = 'session';
+                savedQuestionNavigation = null;
 
                 document.getElementById('welcomeView').classList.add('hidden');
                 document.getElementById('questionView').classList.remove('hidden');
-                renderQ();
+                // Try to load the latest saved question (so generated items appear in saved history).
+                try {
+                    await loadSavedQuestion('', 'latest');
+                } catch (err) {
+                    // If loading saved question fails, fall back to session-mode rendering
+                    console.warn('Could not load latest saved question, falling back to session view', err);
+                    renderQ();
+                }
                 updateWorkspaceText();
 updateShuffleLabel();
 updateQuestionDistributionLabel();
@@ -1933,9 +2179,14 @@ updateQuestionDistributionLabel();
                 console.error(e);
                 renderSessionWarnings([e.message || 'Generation failed. Please try again.']);
                 alert(e.message || "Generation failed. Please try again.");
+                // Reset UI to prevent stuck state
+                document.getElementById('welcomeView').classList.remove('hidden');
+                document.getElementById('questionView').classList.add('hidden');
             } finally {
                 updateGenerateButton(false);
-btn.disabled = false;
+                btn.disabled = false;
+                // Always update button states after generation attempt
+                updateHistoryNavButtons(savedQuestionNavigation);
             }
 
         }
@@ -1960,6 +2211,7 @@ ${activeLanguage === 'hi' ? 'सभी' : 'ALL'}
         }
 
         function filterType(type, btn) {
+            if (!allQuestions) return;
             if (type === 'All') {
                 filteredQuestions = [...allQuestions];
             } else {
@@ -1972,116 +2224,25 @@ ${activeLanguage === 'hi' ? 'सभी' : 'ALL'}
 
             cursor = 0;
             renderQ();
+            updateHistoryNavButtons(null);  // Update button states after filter
         }
 
         function renderQ() {
-            if (filteredQuestions.length === 0) return;
+            if (!filteredQuestions || filteredQuestions.length === 0) {
+                console.warn('renderQ: filteredQuestions is empty or undefined');
+                return;
+            }
+            if (cursor < 0 || cursor >= filteredQuestions.length) {
+                console.warn(`renderQ: cursor ${cursor} out of bounds [0, ${filteredQuestions.length})`);
+                cursor = 0;  // Reset to safe state
+            }
             const q = filteredQuestions[cursor];
-            
-            document.getElementById('qTypeLabel').innerText = getQuestionTypeLabel(q.category || "General Question");
-            renderTypeMatchStatus(q);
-
-            // 1. FIX: Render the actual question! (This got accidentally deleted)
-            document.getElementById('qContent').innerHTML = marked.parse(q.question || "");
-            
-            // 2. FIX: Render the answer (properly falling back to the top-level answer)
-            document.getElementById('aContent').innerHTML = marked.parse(q.rubric?.answer || q.answer || "No answer provided.");
-            document.getElementById('aContent').classList.add('hidden');
-
-            // 3. Render the rubric
-            renderRubric(q.rubric || null, q.answer || "");
-
-            // 4. Handle the citation visibility and content
-            const citationDiv = document.getElementById('qCitation');
-            if (citationDiv) {
-                // STRICT CHECK: Check if the citation toggle was actually ON when this question was generated
-                const isCitationMode = q.generation_settings ? q.generation_settings.use_citation : currentUseCitation;
-
-                // Only render if the LLM provided a citation AND the user specifically requested citation mode
-                if (q.citation && isCitationMode) {
-                    // Scrub redundant "Citation:" labels injected by the LLM
-                    let cleanCitation = q.citation.replace(/^(?:\*\*Citation:\*\*\s*|Citation:\s*)+/ig, '').trim();
-                    
-                    const citationParts = cleanCitation.split(/(?:\*\*Citation:\*\*\s*|Citation:\s*)/i).filter(p => p.trim().length > 0);
-                    if (citationParts.length > 0) {
-                        cleanCitation = citationParts[0].trim();
-                    }
-
-                    citationDiv.innerHTML = marked.parse("**Citation:** *" + cleanCitation + "*");
-                    citationDiv.classList.remove('hidden');
-                } else {
-                    // If Citation Mode is OFF, hide the box completely (even if the LLM generated a citation for grounding)
-                    citationDiv.classList.add('hidden');
-                }
+            if (!q) {
+                console.warn('renderQ: question at cursor is null or undefined');
+                return;
             }
-
-            document.getElementById('progressBar').innerText =
-                activeLanguage === 'hi'
-                    ? `प्रगति: ${toHindiNumber(cursor + 1)} / ${toHindiNumber(filteredQuestions.length)}`
-                    : `PROGRESS: ${cursor + 1} OF ${filteredQuestions.length}`;
-
-            // Display generation time if available
-            const genTimeEl = document.getElementById('qGenerationTime');
-            const genTimeText = document.getElementById('generationTimeText');
-            if (q.generation_time_ms) {
-                const seconds = (q.generation_time_ms / 1000).toFixed(2);
-                genTimeText.textContent = `Generated in ${seconds}s`;
-                genTimeEl.classList.remove('hidden');
-            } else {
-                genTimeEl.classList.add('hidden');
-            }
-
-
-            document.getElementById('revealBtn').innerText =
-                activeLanguage === 'hi'
-                    ? "अध्ययन तर्क दिखाएँ"
-                    : "REVEAL STUDY LOGIC";
-
-            // Source text and Explore
-            const sourceTextSection = document.getElementById('sourceTextSection');
-            const sourceTextContent = document.getElementById('sourceTextContent');
-            const exploreBtn = document.getElementById('exploreBtn');
-            const sourceText = q.source_text || {};
-            
-            if (sourceText.topic_chunk) {
-                sourceTextSection.classList.remove('hidden');
-
-                const topicText = sourceText.topic_chunk || '';
-                document.getElementById('sourceTopicChunk').innerText = topicText;
-
-                // Highlight "SOURCE TEXT" button red if RAG failed
-                const toggleBtn = document.getElementById('toggleSourceTextBtn');
-                if (topicText.trim() === 'RAG failed.') {
-                    toggleBtn.style.color = '#ef4444';      
-                    toggleBtn.style.borderColor = '#ef4444';
-                } else {
-                    toggleBtn.style.color = '';
-                    toggleBtn.style.borderColor = '';
-                }
-                const themeEl = document.getElementById('sourceThemeChunk');
-                if (sourceText.theme_chunk) {
-                    themeEl.classList.remove('hidden');
-                    themeEl.innerText = sourceText.theme_chunk;
-                } else {
-                    themeEl.classList.add('hidden');
-                }
-                sourceTextContent.classList.add('hidden');
-                document.getElementById('sourceTextIcon').classList.remove('fa-chevron-up');
-                document.getElementById('sourceTextIcon').classList.add('fa-chevron-down');
-            } else {
-                sourceTextSection.classList.add('hidden');
-                exploreBtn.classList.add('hidden');
-            }
-            
-            renderMath();
-            
-            // Render board opinions if available
-            if (q.board_metadata) {
-                renderBoardOpinions(q.board_metadata);
-                document.getElementById('boardOpinionsSection').classList.remove('hidden');
-            } else {
-                document.getElementById('boardOpinionsSection').classList.add('hidden');
-            }
+            setViewerMode('session');
+            renderQuestionToView(q, { mode: 'session' });
         }
         function scoreBar(percent) {
             const color =
@@ -2210,7 +2371,7 @@ ${activeLanguage === 'hi' ? 'सभी' : 'ALL'}
         }
 
         function openExplore() {
-            const q = filteredQuestions[cursor];
+            const q = currentDisplayedQuestion || filteredQuestions[cursor];
             if (!q || !q.source_text) return;
             const context = {
                 topic_chunk: q.source_text.topic_chunk || '',
@@ -2227,8 +2388,43 @@ ${activeLanguage === 'hi' ? 'सभी' : 'ALL'}
             window.open(exploreUrl, '_blank', 'noopener');
         }
 
-        function nextQ() { if (cursor < filteredQuestions.length - 1) { cursor++; renderQ(); } }
-        function prevQ() { if (cursor > 0) { cursor--; renderQ(); } }
+        function nextQ() {
+            if (viewerMode === 'saved') {
+                if (savedQuestionNavigation?.has_next) {
+                    navigateSavedQuestions('next');
+                }
+                return;
+            }
+            // Session mode navigation
+            if (!filteredQuestions || filteredQuestions.length === 0) {
+                console.warn('nextQ: No questions available');
+                return;
+            }
+            if (cursor < filteredQuestions.length - 1) {
+                cursor++;
+                renderQ();
+                updateHistoryNavButtons(null);
+            }
+        }
+
+        function prevQ() {
+            if (viewerMode === 'saved') {
+                if (savedQuestionNavigation?.has_prev) {
+                    navigateSavedQuestions('prev');
+                }
+                return;
+            }
+            // Session mode navigation
+            if (!filteredQuestions || filteredQuestions.length === 0) {
+                console.warn('prevQ: No questions available');
+                return;
+            }
+            if (cursor > 0) {
+                cursor--;
+                renderQ();
+                updateHistoryNavButtons(null);
+            }
+        }
     </script>
 </body>
 </html>
