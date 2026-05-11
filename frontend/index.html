@@ -581,11 +581,10 @@
                     <select id="blockDropdown" class="w-full rounded-2xl p-4 text-sm outline-none transition-all">
                         <option value="">Select Course First</option>
                     </select>
-                    <select id="marksDropdown" class="w-full rounded-2xl p-4 text-sm outline-none transition-all">
-                        <option value="5" selected>5 Marks (Short Answer)</option>
-                        <option value="10">10 Marks (Detailed Answer)</option>
-                        <option value="20">20 Marks (Long Essay)</option>
-                    </select>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-bold uppercase tracking-widest opacity-60 ml-1" style="color: var(--text-muted);">Select Marks</label>
+                        <input type="number" id="marksDropdown" step="0.5" min="0.5" max="50" value="5" class="w-full rounded-2xl p-4 text-sm outline-none transition-all" style="background: var(--input-bg); border: 1px solid var(--input-border); color: var(--text-primary);">
+                    </div>
                 </div>
 
                 <div class="space-y-3">
@@ -2074,7 +2073,7 @@ renderQuestionTypes();
                         theme: "general",
                         qType: req.type,
                         num_questions: req.count,
-                        rubric_marks:parseInt(document.getElementById('marksDropdown').value, 10),
+                        rubric_marks:parseFloat(document.getElementById('marksDropdown').value),
                         use_rag: currentUseRag,
                         use_citation: currentUseCitation,
                         enable_alignment: currentEnableAlignment,
