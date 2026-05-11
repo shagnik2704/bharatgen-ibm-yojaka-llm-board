@@ -93,6 +93,7 @@ class QueryRequest(BaseModel):
 SUPPORTED_QTYPES = {
     "Multiple Choice (MCQ)",
     "Short Answer",
+    "Long Answer",
     "True/False",
 }
 

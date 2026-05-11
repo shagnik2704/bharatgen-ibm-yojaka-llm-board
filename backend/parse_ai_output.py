@@ -83,8 +83,8 @@ def parse_ai_output(raw_text: str) -> List[Dict[str, Any]]:
             answer = item.get("answer", "")
             
             # Fallback mapping if answer is nested directly inside the rubric
-            if not answer and isinstance(rubric, dict):
-                answer = rubric.get("answer", "")
+            # if not answer and isinstance(rubric, dict):
+            #     answer = rubric.get("answer", "")
             
             # Check for explicitly mapped citation first (from the new Bloom 2 schema)
             citation = item.get("citation")

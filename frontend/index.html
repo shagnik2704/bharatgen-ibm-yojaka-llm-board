@@ -581,6 +581,11 @@
                     <select id="blockDropdown" class="w-full rounded-2xl p-4 text-sm outline-none transition-all">
                         <option value="">Select Course First</option>
                     </select>
+                    <select id="marksDropdown" class="w-full rounded-2xl p-4 text-sm outline-none transition-all">
+                        <option value="5" selected>5 Marks (Short Answer)</option>
+                        <option value="10">10 Marks (Detailed Answer)</option>
+                        <option value="20">20 Marks (Long Essay)</option>
+                    </select>
                 </div>
 
                 <div class="space-y-3">
@@ -609,28 +614,26 @@
                         style="color: var(--text-muted);">
                         Bloom Level
                     </p>
-                    <div class="flex gap-2">
-                        <button id="depthDirectBtn" onclick="setDepth('Bloom level 1: Remember', this)"
-                            class="depth-btn flex-1 border p-3 rounded-xl text-xs font-bold transition-all">
-                            Level 1
+                   <div class="grid grid-cols-2 gap-2">
+                        <button id="depthL1" onclick="setDepth('Bloom level 1: Remember', this)" class="depth-btn border p-3 rounded-xl text-xs font-bold transition-all active-btn">
+                            L1: Remember
                         </button>
 
-                        <button id="depthAppliedBtn" onclick="setDepth('Bloom level 2: Understand', this)"
-                            class="depth-btn flex-1 border p-3 rounded-xl text-xs font-bold transition-all btn-secondary">
-                            Level 2
+                        <button id="depthL2" onclick="setDepth('Bloom level 2: Understand', this)" class="depth-btn border p-3 rounded-xl text-xs font-bold transition-all btn-secondary">
+                            L2: Understand
                         </button>
-                        <!-- <button 
-                            onclick="setDepth('DOK level 3: Strategic Thinking', this)" 
-                            class="depth-btn flex-1 border p-3 rounded-xl text-xs font-bold transition-all btn-secondary"
-                        >
-                            L3
-                        </button> -->
-                        <!-- <button 
-                            onclick="setDepth('DOK level 4: Extended Thinking', this)" 
-                            class="depth-btn flex-1 border p-3 rounded-xl text-xs font-bold transition-all btn-secondary"
-                        >
-                            L4
-                        </button> -->
+                        <button id="depthL3" onclick="setDepth('Bloom level 3: Apply', this)" class="depth-btn border p-3 rounded-xl text-xs font-bold transition-all btn-secondary">
+                            L3: Apply
+                        </button>
+                        <button id="depthL4" onclick="setDepth('Bloom level 4: Analyze', this)" class="depth-btn border p-3 rounded-xl text-xs font-bold transition-all btn-secondary">
+                            L4: Analyze
+                        </button>
+                        <button id="depthL5" onclick="setDepth('Bloom level 5: Evaluate', this)" class="depth-btn border p-3 rounded-xl text-xs font-bold transition-all btn-secondary">
+                            L5: Evaluate
+                        </button>
+                        <button id="depthL6" onclick="setDepth('Bloom level 6: Create', this)" class="depth-btn border p-3 rounded-xl text-xs font-bold transition-all btn-secondary">
+                            L6: Create
+                        </button>
                     </div>
                 </div>
 
@@ -930,17 +933,31 @@ function toHindiNumber(num) {
 
         function updateDifficultyLabels() {
             const label = document.getElementById('difficultyLabel');
-            const directBtn = document.getElementById('depthDirectBtn');
-            const appliedBtn = document.getElementById('depthAppliedBtn');
+            const btns = [
+                document.getElementById('depthL1'),
+                document.getElementById('depthL2'),
+                document.getElementById('depthL3'),
+                document.getElementById('depthL4'),
+                document.getElementById('depthL5'),
+                document.getElementById('depthL6')
+            ];
 
             if (activeLanguage === 'hi') {
                 label.innerText = "ब्लूम स्तर";
-                directBtn.innerText = "स्तर 1";
-                appliedBtn.innerText = "स्तर 2";
+                if(btns[0]) btns[0].innerText = "स्तर 1";
+                if(btns[1]) btns[1].innerText = "स्तर 2";
+                if(btns[2]) btns[2].innerText = "स्तर 3";
+                if(btns[3]) btns[3].innerText = "स्तर 4";
+                if(btns[4]) btns[4].innerText = "स्तर 5";
+                if(btns[5]) btns[5].innerText = "स्तर 6";
             } else {
                 label.innerText = "Bloom Level";
-                directBtn.innerText = "Level 1";
-                appliedBtn.innerText = "Level 2";
+                if(btns[0]) btns[0].innerText = "L1: Remember";
+                if(btns[1]) btns[1].innerText = "L2: Understand";
+                if(btns[2]) btns[2].innerText = "L3: Apply";
+                if(btns[3]) btns[3].innerText = "L4: Analyze";
+                if(btns[4]) btns[4].innerText = "L5: Evaluate";
+                if(btns[5]) btns[5].innerText = "L6: Create";
             }
         }
         const availableTypes = [
@@ -2057,6 +2074,7 @@ renderQuestionTypes();
                         theme: "general",
                         qType: req.type,
                         num_questions: req.count,
+                        rubric_marks:parseInt(document.getElementById('marksDropdown').value, 10),
                         use_rag: currentUseRag,
                         use_citation: currentUseCitation,
                         enable_alignment: currentEnableAlignment,
