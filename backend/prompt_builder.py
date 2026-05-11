@@ -15,10 +15,10 @@ def build_prompt_from_request(req: Any, chunk_text: str) -> str:
     depth = getattr(req, "depth", "") or ""
     question_count = get_generation_question_count(depth, getattr(req, "num_questions", 1))
 
-    rubric_total_marks=getattr(req,"rubric_marks",5)
-    if rubric_total_marks == 20:
+    rubric_total_marks=getattr(req,"rubric_marks",5.0)
+    if rubric_total_marks > 15:
         answer_length_instruction = "The answer MUST be a comprehensive, long-form essay. It must contain a clear Introduction, multiple distinct Body Paragraphs exploring deep critical analysis, and a definitive Conclusion."
-    elif rubric_total_marks == 10:
+    elif rubric_total_marks > 5:
         answer_length_instruction = "The answer MUST be structured into 2 to 3 paragraphs."
     else:
         answer_length_instruction = "The answer MUST be direct, approximately 50-75 words or 4-5 sentences. It should form a single, focused paragraph that directly addresses the question without unnecessary exposition."
@@ -60,8 +60,7 @@ def build_prompt_from_request(req: Any, chunk_text: str) -> str:
             "The answer should show understanding of the citation content.\n\n"
         )
 
-    # Determine appropriate total marks for rubric based on Bloom level
-    rubric_total_marks = 10
+
     if is_bloom_level_2(depth):
         depth_description = "Bloom level 2 - Understanding — Explain ideas or concepts in your own words and interpret meaning."
     else:
