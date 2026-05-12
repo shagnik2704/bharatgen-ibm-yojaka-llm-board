@@ -29,7 +29,7 @@ testing/
 books/
 *.log
 *.db
-
+*.pid
 # IDE
 .vscode/
 .idea/

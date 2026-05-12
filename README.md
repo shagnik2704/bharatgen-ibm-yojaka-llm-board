@@ -36,6 +36,7 @@ bharatgen-ibm-yojaka-llm-board/
 ## Prerequisites
 
 - Python 3.9+
+- **Redis** (required for Celery task queue)
 - (Optional) CUDA-capable GPU for local models
 - API keys for cloud models (Gemini, OpenAI)
 - Ollama installed if using local Ollama models
@@ -65,6 +66,10 @@ PARAM1_7B_MOE_PATH=/home/jashwanth/Param-1-7B-MoE
 # PARAM1_2_9B_INSTRUCT_MODEL=bharatgenai/Param-1-2.9B-Instruct
 # Optional: Use 4-bit quantization for 2.9B to save VRAM
 # PARAM_2_9B_4BIT=1
+
+# Celery / Redis (defaults shown)
+CELERY_BROKER_URL=redis://localhost:6379/0
+CELERY_RESULT_BACKEND=redis://localhost:6379/0
 ```
 
 ## Running the Application
@@ -90,13 +95,67 @@ docker compose down
 
 ### Option 2: Local Development
 
-Start the backend in debug mode:
+You need **3 things running** to use the full application:
+
+#### 1. Redis (message broker)
 
 ```bash
-python backend/app.py
+# Check if Redis is already running
+redis-cli ping        # Should print PONG
+
+# If not running, start it
+redis-server --daemonize yes
+```
+
+#### 2. FastAPI Backend (web server)
+
+```bash
+cd backend
+python app.py
 ```
 
 The application will be available at `http://localhost:8000/`
+
+#### 3. Celery Workers (background question generation)
+
+Bulk question generation runs asynchronously via Celery. You **must** start at least one worker for generation to work.
+
+**Start workers (from the `backend/` directory):**
+
+```bash
+# Start 3 background workers (adjust the number based on your GPU VRAM)
+cd backend
+celery -A tasks multi start worker1 worker2 worker3 \
+    --pool=solo --loglevel=info \
+    --pidfile="./%n.pid" --logfile="./%n.log"
+```
+
+**Stop workers:**
+
+```bash
+cd backend
+celery -A tasks multi stop worker1 worker2 worker3 --pidfile="./%n.pid"
+```
+
+**Restart workers (after code changes):**
+
+```bash
+cd backend
+celery -A tasks multi restart worker1 worker2 worker3 \
+    --pool=solo --loglevel=info \
+    --pidfile="./%n.pid" --logfile="./%n.log"
+```
+
+**View worker logs:**
+
+```bash
+# Live-tail a specific worker's log
+tail -f backend/worker1.log
+```
+
+> **Note:** We use `--pool=solo` because PyTorch/CUDA cannot be forked safely.
+> Each worker is an independent process. More workers = more parallel generations,
+> but each one loads models into GPU memory. Adjust the number to fit your VRAM.
 
 ## RAG Pipeline Setup
 
