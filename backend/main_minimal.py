@@ -9,12 +9,14 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Dict, List, Optional
 import time
+import threading
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from exporter import create_session_xlsx
 
 try:
     from .rag_retriever import MAX_CHUNK_WORDS, MIN_CHUNK_WORDS, MinimalRAGRetriever
@@ -78,7 +80,7 @@ class QueryRequest(BaseModel):
     standard: str
     theme: str = ""
     qType: str
-    num_questions: int = Field(default=1, ge=1, le=5)
+    num_questions: int = Field(default=1, ge=1)
     block: Optional[str] = None
     use_rag: bool = True
     use_citation: bool = False
@@ -300,10 +302,25 @@ class QuestionStore:
 
     def _init_db(self) -> None:
         with sqlite3.connect(self.db_path) as conn:
+            # Table to track bulk generation progress
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS generation_sessions (
+                    id TEXT PRIMARY KEY,
+                    created_at TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    total_requested INTEGER NOT NULL,
+                    total_generated INTEGER DEFAULT 0,
+                    parameters_json TEXT NOT NULL
+                )
+                """
+            )
+            
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS generated_questions (
                     id TEXT PRIMARY KEY,
+                    session_id TEXT,
                     created_at TEXT NOT NULL,
                     model_id TEXT NOT NULL,
                     subject TEXT,
@@ -327,8 +344,9 @@ class QuestionStore:
                     rubric_json TEXT,
                     type_match INTEGER,
                     type_match_reason TEXT,
-                    is_rag INTEGER DEFAULT 0
-                        , use_citation INTEGER DEFAULT 0
+                    is_rag INTEGER DEFAULT 0,
+                    use_citation INTEGER DEFAULT 0,
+                    FOREIGN KEY(session_id) REFERENCES generation_sessions(id)
                 )
                 """
             )
@@ -338,6 +356,7 @@ class QuestionStore:
     def _ensure_columns(self, conn: sqlite3.Connection) -> None:
         existing = {row[1] for row in conn.execute("PRAGMA table_info(generated_questions)")}
         required = {
+            "session_id": "TEXT",
             "alignment_score": "REAL",
             "scores_json": "TEXT",
             "source_text_json": "TEXT",
@@ -354,12 +373,76 @@ class QuestionStore:
             if column_name not in existing:
                 conn.execute(f"ALTER TABLE generated_questions ADD COLUMN {column_name} {column_type}")
 
+    def create_session(self, total_requested: int, parameters: Dict[str, Any]) -> str:
+        session_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        with self.lock:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute(
+                    """
+                    INSERT INTO generation_sessions (
+                        id, created_at, status, total_requested, total_generated, parameters_json
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (session_id, now, "pending", total_requested, 0, json.dumps(parameters))
+                )
+                conn.commit()
+        return session_id
+
+    def update_session_progress(self, session_id: str, generated_count: int) -> None:
+        with self.lock:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute(
+                    """
+                    UPDATE generation_sessions 
+                    SET total_generated = total_generated + ? 
+                    WHERE id = ?
+                    """,
+                    (generated_count, session_id)
+                )
+                conn.commit()
+
+    def update_session_status(self, session_id: str, status: str) -> None:
+        with self.lock:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute(
+                    "UPDATE generation_sessions SET status = ? WHERE id = ?",
+                    (status, session_id)
+                )
+                conn.commit()
+
+    def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM generation_sessions WHERE id = ?", (session_id,)).fetchone()
+        if not row:
+            return None
+        data = dict(row)
+        data["parameters"] = json.loads(data.pop("parameters_json"))
+        return data
+
+    def get_sessions(self, limit: int = 50) -> List[Dict[str, Any]]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT * FROM generation_sessions ORDER BY created_at DESC LIMIT ?", 
+                (limit,)
+            ).fetchall()
+        
+        sessions = []
+        for row in rows:
+            data = dict(row)
+            data["parameters"] = json.loads(data.pop("parameters_json"))
+            sessions.append(data)
+        return sessions
+
     def save_batch(
         self,
         req: QueryRequest,
         questions: List[Dict[str, Any]],
         chunk_text: str,
         chunk_meta: Optional[Dict[str, Any]],
+        session_id: Optional[str] = None,
     ) -> List[str]:
         ids: List[str] = []
         now = datetime.now(timezone.utc).isoformat()
@@ -381,14 +464,15 @@ class QuestionStore:
                     conn.execute(
                         """
                         INSERT INTO generated_questions (
-                            id, created_at, model_id, subject, chapter, standard, theme, qtype, depth, language,
+                            id, session_id, created_at, model_id, subject, chapter, standard, theme, qtype, depth, language,
                             request_json, question, answer, chunk_text, chunk_source, similarity,
                             alignment_score, scores_json, source_text_json, source_meta_json, board_metadata_json, rubric_json,
                             type_match, type_match_reason, is_rag, use_citation, citation
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             row_id,
+                            session_id,
                             now,
                             req.model_id or "groq-llama-70b",
                             req.subject,
@@ -435,6 +519,40 @@ class QuestionStore:
                 (limit, offset),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    def get_session_questions(self, session_id: str) -> List[Dict[str, Any]]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                  SELECT rowid AS row_index, id, created_at, model_id, subject, chapter, qtype, depth, language, question, similarity, alignment_score,
+                      type_match, type_match_reason, is_rag, use_citation, citation, scores_json, source_text_json, source_meta_json, board_metadata_json, rubric_json, answer
+                FROM generated_questions
+                WHERE session_id = ?
+                ORDER BY rowid ASC
+                """,
+                (session_id,),
+            ).fetchall()
+        
+        # We need to normalize these the same way we do for get_question
+        normalized_questions = []
+        for r in rows:
+            q = dict(r)
+            for key in ("scores_json", "source_text_json", "source_meta_json", "board_metadata_json", "rubric_json"):
+                if q.get(key):
+                    try:
+                        q[key.replace("_json", "")] = json.loads(q[key])
+                    except Exception:
+                        q[key.replace("_json", "")] = q[key]
+            
+            # Additional UI fields
+            q["category"] = q.get("qtype")
+            q["question_text"] = q.get("question")
+            q["answer_text"] = q.get("answer")
+            q["scores"] = q.get("scores") or {"similarity": q.get("similarity"), "alignment_score": q.get("alignment_score")}
+            normalized_questions.append(q)
+            
+        return normalized_questions
 
     def get_question(self, row_id: str) -> Optional[Dict[str, Any]]:
         data = self._fetch_single(
@@ -580,6 +698,11 @@ async def serve_index():
 @app.get("/viewq")
 async def serve_viewer():
     return FileResponse(frontend_dir / "viewq.html")
+
+@app.get("/generations.html")
+@app.get("/generations")
+async def serve_generations():
+    return FileResponse(frontend_dir / "generations.html")
 # ----------------------------------------------------------
 
 try:
@@ -707,7 +830,35 @@ def health() -> Dict[str, Any]:
 
 
 @app.post("/ask")
-async def ask(req: QueryRequest) -> List[Dict[str, Any]]:
+async def ask(req: QueryRequest):
+    from tasks import generated_questions_task
+    total_req = get_generation_question_count(req.depth, req.num_questions)
+    
+    # 1. Create a session in the database
+    session_id = store.create_session(total_req, req.model_dump())
+    
+    # 2. Split the request into chunks of max 2 questions (hyperparameter)
+    chunk_size = 2
+    tasks_needed = (total_req + chunk_size - 1) // chunk_size
+    
+    for i in range(tasks_needed):
+        chunk_req = req.model_copy()
+        # Adjust the number of questions for this specific chunk
+        chunk_req.num_questions = min(chunk_size, total_req - i * chunk_size)
+        
+        # 3. Queue the background task
+        generated_questions_task.delay(session_id, chunk_req.model_dump(), chunk_req.num_questions)
+        
+    # 4. Immediately return the session ID
+    return {
+        "session_id": session_id,
+        "status": "pending",
+        "total_requested": total_req,
+        "message": "Questions are being generated in the background."
+    }
+
+
+async def _async_generate_chunk(req: QueryRequest, session_id: str) -> List[Dict[str, Any]]:
     start_time = time.time()  # Start timer
     
     if os.getenv("LLM_PROVIDER", "groq").lower() == "groq" and groq_client is None:
@@ -785,10 +936,13 @@ async def ask(req: QueryRequest) -> List[Dict[str, Any]]:
             generation_time_ms=round((time.time() - start_time) * 1000, 2),
         )
 
-        saved_ids = store.save_batch(req, enriched, chunk_text=(source_chunks.get("topic_chunk") or "") + ("\n\n" + source_chunks.get("theme_chunk") if source_chunks.get("theme_chunk") else ""), chunk_meta=source_meta)
+        saved_ids = store.save_batch(req, enriched, chunk_text=(source_chunks.get("topic_chunk") or "") + ("\n\n" + source_chunks.get("theme_chunk") if source_chunks.get("theme_chunk") else ""), chunk_meta=source_meta, session_id=session_id)
         for i, row_id in enumerate(saved_ids):
             if i < len(enriched):
                 enriched[i]["id"] = row_id
+                
+        # Update progress
+        store.update_session_progress(session_id, len(saved_ids))
         return enriched
 
     retrieval_query = " ".join([req.chapter or "", req.theme or ""]).strip() or req.subject
@@ -859,12 +1013,48 @@ async def ask(req: QueryRequest) -> List[Dict[str, Any]]:
         generation_time_ms=round((time.time() - start_time) * 1000, 2),
     )
 
-    saved_ids = store.save_batch(req, enriched, chunk_text=chunk_text if (req.use_rag or req.use_citation) else "", chunk_meta=first_meta)
+    saved_ids = store.save_batch(req, enriched, chunk_text=chunk_text if (req.use_rag or req.use_citation) else "", chunk_meta=first_meta, session_id=session_id)
     for i, row_id in enumerate(saved_ids):
         if i < len(enriched):
             enriched[i]["id"] = row_id
 
+    # Update progress
+    store.update_session_progress(session_id, len(saved_ids))
     return enriched
+
+
+@app.get("/api/session/{session_id}")
+def get_session_status(session_id: str) -> Dict[str, Any]:
+    session = store.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return session
+
+
+@app.get("/api/sessions")
+def list_sessions(limit: int = 50) -> List[Dict[str, Any]]:
+    return store.get_sessions(limit=limit)
+
+
+@app.get("/api/session/{session_id}/questions")
+def get_session_questions(session_id: str) -> List[Dict[str, Any]]:
+    return store.get_session_questions(session_id)
+
+
+@app.get("/api/session/{session_id}/export")
+def export_session_xlsx(session_id: str):
+    questions = store.get_session_questions(session_id)
+    if not questions:
+        raise HTTPException(status_code=404, detail="No questions found for this session")
+    
+    output = create_session_xlsx(questions)
+    
+    filename = f"BharatGen_Session_{session_id[:8]}.xlsx"
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
 
 
 @app.get("/api/questions")

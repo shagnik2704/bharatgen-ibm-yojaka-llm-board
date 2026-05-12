@@ -373,6 +373,12 @@
                 <i id="themeIcon" class="fa-solid fa-moon"></i>
             </button>
 
+            <button onclick="window.location.href='/generations.html'"
+                class="w-10 h-10 glass-panel rounded-xl flex items-center justify-center"
+                style="color: var(--text-secondary);" title="Sessions Dashboard">
+                <i class="fa-solid fa-gauge-high"></i>
+            </button>
+
             <button onclick="window.location.href='/viewq'"
                 class="w-10 h-10 glass-panel rounded-xl flex items-center justify-center"
                 style="color: var(--text-secondary);" title="View Saved Questions">
@@ -667,6 +673,11 @@
         </aside>
 
         <section class="lg:col-span-8">
+            <div id="sessionWarnings"
+                class="hidden glass-panel p-4 rounded-2xl text-xs font-semibold mb-6"
+                style="color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.35);">
+            </div>
+
             <div id="welcomeView"
                 class="glass-panel h-[520px] rounded-3xl flex flex-col items-center justify-center text-center p-8 border-dashed border-2"
                 style="border-color: var(--border-light);">
@@ -717,14 +728,8 @@
                         </button>
                     </div>
                 </div>
-
-                <div id="sessionWarnings"
-                    class="hidden glass-panel p-4 rounded-2xl text-xs font-semibold"
-                    style="color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.35);">
-                </div>
-
-                <div
-                    class="glass-panel p-10 md:p-12 rounded-3xl min-h-[320px] flex flex-col justify-center relative overflow-hidden">
+                
+                <div class="glass-panel p-10 md:p-12 rounded-3xl min-h-[320px] flex flex-col justify-center relative overflow-hidden">
                     <div id="qTypeLabel" class="text-xs font-black uppercase tracking-widest mb-4"
                         style="color: var(--accent-primary);">
                         ...
@@ -1682,7 +1687,7 @@ function toHindiNumber(num) {
                         data-type="${type}"
                         value="0"
                         min="0"
-                        max="5"
+                        max="50"
                         class="q-type-count w-14 bg-transparent text-center font-bold outline-none">
                 `;
                 typeContainer.appendChild(div);
@@ -2007,8 +2012,8 @@ renderQuestionTypes();
                 const count = parseInt(input.value) || 0;
 
                 // Per-type limit
-                if (count > 5) {
-                    alert("Maximum 5 questions allowed per question type.");
+                if (count > 50) {
+                    alert("Maximum 50 questions allowed per question type.");
                     input.focus();
                     throw new Error("Per-type limit exceeded");
                 }
@@ -2020,8 +2025,8 @@ renderQuestionTypes();
             });
 
             // Total limit check
-            if (totalQuestions > 5) {
-                alert("You can request a maximum of 5 questions in total across all types.");
+            if (totalQuestions > 100) {
+                alert("You can request a maximum of 100 questions in total across all types.");
                 return;
             }
 
@@ -2114,21 +2119,21 @@ renderQuestionTypes();
                 });
 
                 const results = await Promise.allSettled(promises);
-                const warnings = [];
+                const activeSessions = [];
                 const failures = [];
 
                 results.forEach((result, index) => {
                     const reqMeta = typeRequests[index];
                     if (result.status === 'fulfilled') {
                         const data = result.value;
-                        if (Array.isArray(data)) {
-                            data.forEach(q => q.category = reqMeta.type);
-                            newQuestions.push(...data);
-                            if (data.length < reqMeta.count) {
-                                warnings.push(
-                                    `${reqMeta.type}: requested ${reqMeta.count}, generated ${data.length}.`
-                                );
-                            }
+                        if (data.session_id) {
+                            activeSessions.push({
+                                session_id: data.session_id,
+                                type: reqMeta.type,
+                                requested: data.total_requested,
+                                generated: 0,
+                                status: 'pending'
+                            });
                         } else {
                             failures.push(`${reqMeta.type}: invalid response format`);
                         }
@@ -2137,59 +2142,13 @@ renderQuestionTypes();
                     }
                 });
 
-                if (warnings.length > 0) {
-                    warnings.unshift('Some requests returned fewer questions than requested:');
-                }
-                if (failures.length > 0) {
-                    warnings.push(`Failed types: ${failures.join(' | ')}`);
+                if (activeSessions.length === 0) {
+                    throw new Error(failures.length ? `All requests failed: ${failures.join(' | ')}` : 'No sessions started.');
                 }
 
-                renderSessionWarnings(warnings);
-
-                if (newQuestions.length === 0) {
-                    const reason = failures.length
-                        ? `All requests failed. ${failures.join(' | ')}`
-                        : 'No questions were generated.';
-                    throw new Error(reason);
-                }
-
-                try {
-                    const latestResp = await fetch('/api/question-stack?action=latest');
-                    if (latestResp.ok) {
-                        const latestPayload = await latestResp.json();
-                        const latestQuestionId = latestPayload?.question?.id;
-                        if (latestQuestionId) {
-                            currentSavedQuestionId = latestQuestionId;
-                            localStorage.setItem('question_viewer_current_id', latestQuestionId);
-                        }
-                    }
-                } catch (error) {
-                    console.warn('Could not refresh saved question pointer', error);
-                }
-
-                if (shuffle) {
-                    newQuestions.sort(() => Math.random() - 0.5);
-                }
-
-                allQuestions = [...newQuestions, ...existingQuestions];
-                filteredQuestions = [...allQuestions];
-                renderTabs(typeRequests);
-                viewerMode = 'session';
-                savedQuestionNavigation = null;
-
-                document.getElementById('welcomeView').classList.add('hidden');
-                document.getElementById('questionView').classList.remove('hidden');
-                // Try to load the latest saved question (so generated items appear in saved history).
-                try {
-                    await loadSavedQuestion('', 'latest');
-                } catch (err) {
-                    // If loading saved question fails, fall back to session-mode rendering
-                    console.warn('Could not load latest saved question, falling back to session view', err);
-                    renderQ();
-                }
-                updateWorkspaceText();
-updateShuffleLabel();
-updateQuestionDistributionLabel();
+                // --- POLLING LOOP ---
+                localStorage.setItem('pendingSessions', JSON.stringify(activeSessions));
+                await pollAndFinalizeSessions(activeSessions, typeRequests, shuffle, existingQuestions);
 
 
             } catch (e) {
@@ -2206,6 +2165,164 @@ updateQuestionDistributionLabel();
                 updateHistoryNavButtons(savedQuestionNavigation);
             }
 
+        }
+
+        async function pollAndFinalizeSessions(activeSessions, typeRequests = null, shuffle = false, existingQuestions = []) {
+            let allDone = false;
+            let failures = [];
+            let newQuestions = [];
+            
+            if (!typeRequests) {
+                typeRequests = Array.from(new Set(activeSessions.map(s => s.type))).map(t => ({type: t, count: 0}));
+            }
+
+            document.getElementById('welcomeView').classList.remove('hidden');
+            document.getElementById('questionView').classList.add('hidden');
+            updateGenerateButton(true);
+
+            // 1. Initial immediate feedback
+            renderSessionWarnings([
+                `<div class="flex flex-col gap-3 w-full p-1">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-circle-notch fa-spin text-indigo-500"></i>
+                            <span class="font-bold">Initializing generation...</span>
+                        </div>
+                        <span class="text-[10px] opacity-70 tracking-widest uppercase">Connecting</span>
+                    </div>
+                    <div class="w-full bg-black/5 dark:bg-white/5 rounded-full h-2 overflow-hidden border border-black/5">
+                        <div id="visualProgressBar" class="bg-gradient-to-r from-indigo-500 to-purple-500 h-full transition-all duration-700 ease-out" style="width: 2%"></div>
+                    </div>
+                </div>`
+            ]);
+
+            while (!allDone) {
+                let totalRequested = 0;
+                let totalGenerated = 0;
+                let pendingCount = 0;
+
+                for (const session of activeSessions) {
+                    if (session.status !== 'completed' && session.status !== 'failed') {
+                        try {
+                            const resp = await fetch(`/api/session/${session.session_id}`);
+                            if (resp.ok) {
+                                const statusData = await resp.json();
+                                session.status = statusData.status;
+                                session.generated = statusData.total_generated;
+                                localStorage.setItem('pendingSessions', JSON.stringify(activeSessions));
+                            }
+                        } catch (e) {
+                            console.error('Polling error', e);
+                        }
+                    }
+                }
+
+                for (const session of activeSessions) {
+                    totalRequested += session.requested || 0;
+                    totalGenerated += session.generated || 0;
+                    if (session.status !== 'completed' && session.status !== 'failed') {
+                        pendingCount++;
+                    }
+                }
+
+                const progressPercent = totalRequested > 0 ? Math.min(Math.round((totalGenerated / totalRequested) * 100), 98) : 0;
+
+                renderSessionWarnings([
+                    `<div class="flex flex-col gap-3 w-full p-1">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <i class="fa-solid fa-circle-notch fa-spin text-indigo-500"></i>
+                                <span class="font-bold">Generating Questions...</span>
+                            </div>
+                            <span class="text-xs font-bold text-indigo-500">${totalGenerated} / ${totalRequested} Ready</span>
+                        </div>
+                        <div class="w-full bg-black/5 dark:bg-white/5 rounded-full h-2 overflow-hidden border border-black/5">
+                            <div id="visualProgressBar" class="bg-gradient-to-r from-indigo-500 to-purple-500 h-full transition-all duration-700 ease-out" style="width: ${Math.max(progressPercent, 5)}%"></div>
+                        </div>
+                        <div class="text-[10px] opacity-60 italic">Brainstorming questions...</div>
+                    </div>`
+                ]);
+
+                if (pendingCount === 0) {
+                    allDone = true;
+                } else {
+                    await new Promise(r => setTimeout(r, 2000));
+                }
+            }
+
+            renderSessionWarnings([
+                `<div class="flex items-center gap-3 p-1">
+                    <i class="fa-solid fa-check-circle text-green-500 animate-bounce"></i>
+                    <span class="font-bold">Generation Complete! Finalizing results...</span>
+                </div>`
+            ]);
+            
+            await new Promise(r => setTimeout(r, 800)); // Short pause for the user to see the success state
+            
+            renderSessionWarnings(["Finalizing..."]);
+
+            
+            for (const session of activeSessions) {
+                if (session.status === 'completed' || session.status === 'failed') {
+                    try {
+                        const qResp = await fetch(`/api/session/${session.session_id}/questions`);
+                        if (qResp.ok) {
+                            const qData = await qResp.json();
+                            if (Array.isArray(qData)) {
+                                qData.forEach(q => q.category = session.type);
+                                newQuestions.push(...qData);
+                            }
+                        }
+                    } catch (e) {
+                        failures.push(`Failed to fetch questions for ${session.type}`);
+                    }
+                }
+            }
+
+            localStorage.removeItem('pendingSessions');
+
+            if (failures.length > 0) {
+                renderSessionWarnings([`Completed with warnings: ${failures.join(' | ')}`]);
+            } else {
+                renderSessionWarnings([]); 
+            }
+
+            if (newQuestions.length === 0) {
+                throw new Error('No questions were generated.');
+            }
+
+            try {
+                const latestResp = await fetch('/api/question-stack?action=latest');
+                if (latestResp.ok) {
+                    const latestPayload = await latestResp.json();
+                    const latestQuestionId = latestPayload?.question?.id;
+                    if (latestQuestionId) {
+                        currentSavedQuestionId = latestQuestionId;
+                        localStorage.setItem('question_viewer_current_id', latestQuestionId);
+                    }
+                }
+            } catch (error) {}
+
+            if (shuffle) newQuestions.sort(() => Math.random() - 0.5);
+
+            allQuestions = [...newQuestions, ...existingQuestions];
+            filteredQuestions = [...allQuestions];
+            renderTabs(typeRequests);
+            viewerMode = 'session';
+            savedQuestionNavigation = null;
+            cursor = 0;
+
+            document.getElementById('welcomeView').classList.add('hidden');
+            document.getElementById('questionView').classList.remove('hidden');
+            
+            try {
+                await loadSavedQuestion('', 'latest');
+            } catch (err) {
+                renderQ();
+            }
+            updateWorkspaceText();
+            updateShuffleLabel();
+            updateQuestionDistributionLabel();
         }
 
         function renderTabs(reqs) {
@@ -2442,6 +2559,31 @@ ${activeLanguage === 'hi' ? 'सभी' : 'ALL'}
                 updateHistoryNavButtons(null);
             }
         }
+
+        window.addEventListener('load', () => {
+            const pending = localStorage.getItem('pendingSessions');
+            if (pending) {
+                try {
+                    const activeSessions = JSON.parse(pending);
+                    if (activeSessions && activeSessions.length > 0) {
+                        // Resume the polling loop from where it left off
+                        document.getElementById('genBtn').disabled = true;
+                        pollAndFinalizeSessions(activeSessions, null, false, []).catch(e => {
+                            console.error(e);
+                            renderSessionWarnings([e.message || "Failed to resume session"]);
+                            document.getElementById('genBtn').disabled = false;
+                            updateGenerateButton(false);
+                            localStorage.removeItem('pendingSessions');
+                        }).finally(() => {
+                            document.getElementById('genBtn').disabled = false;
+                            updateGenerateButton(false);
+                        });
+                    }
+                } catch(e) {
+                    localStorage.removeItem('pendingSessions');
+                }
+            }
+        });
     </script>
 </body>
 </html>

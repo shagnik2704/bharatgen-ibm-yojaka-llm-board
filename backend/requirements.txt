@@ -117,3 +117,5 @@ tzdata==2026.2
 urllib3==2.6.3
 uvicorn==0.46.0
 websockets==16.0
+celery
+redis
